@@ -136,6 +136,7 @@ class Coinbase:
             tx.transaction['final_asset_gbp'] = abs(float(transaction['native_amount']['amount']))
 
         tx.transaction['asset'] = asset
+        tx.transaction['type'] = transaction['type']
         tx.transaction['action'] = 'exchange_crypto_for_crypto'
         tx.transaction['disposal'] = True
         tx.transaction['datetime'] = transaction['created_at']
@@ -158,6 +159,7 @@ class Coinbase:
         tx = Transaction()
 
         tx.transaction['asset'] = asset
+        tx.transaction['type'] = transaction['type']
         tx.transaction['action'] = 'exchange_fiat_for_crypto'
         tx.transaction['disposal'] = False
         tx.transaction['datetime'] = transaction['created_at']
@@ -187,7 +189,8 @@ class Coinbase:
         tx = Transaction()
 
         tx.transaction['asset'] = asset
-        tx.transaction['action'] = 'exchange_fiat_for_crypto'
+        tx.transaction['type'] = transaction['type']
+        tx.transaction['action'] = 'exchange_crypto_for_fiat'
         tx.transaction['disposal'] = False
         tx.transaction['datetime'] = transaction['created_at']
         tx.transaction['initial_asset_quantity'] = None
@@ -217,6 +220,7 @@ class Coinbase:
         re_received = re.compile(r'^Received ')
 
         if transaction['details']['subtitle'] == 'From Coinbase Earn':
+            tx.transaction['type'] = transaction['type']
             tx.transaction['action'] = 'gifted_crypto'
             tx.transaction['initial_asset_location'] = None
             tx.transaction['final_asset_address'] = None
@@ -231,6 +235,7 @@ class Coinbase:
             tx.transaction['fee_currency'] = None
             tx.transaction['fee_gbp'] = None
         elif re_sent.search(transaction['details']['title']):
+            tx.transaction['type'] = transaction['type']
             tx.transaction['action'] = 'withdraw_crypto'
             tx.transaction['initial_asset_location'] = 'Coinbase'
             tx.transaction['final_asset_address'] = transaction['to']['address']
@@ -252,6 +257,7 @@ class Coinbase:
                 tx.transaction['fee_currency'] = transaction['network']['transaction_fee']['currency']
             tx.transaction['fee_gbp'] = None
         elif re_received.search(transaction['details']['title']):
+            tx.transaction['type'] = transaction['type']
             tx.transaction['action'] = 'deposit_crypto'
             tx.transaction['initial_asset_location'] = None
             tx.transaction['final_asset_address'] = None
@@ -283,6 +289,7 @@ class Coinbase:
         tx = Transaction()
 
         tx.transaction['asset'] = asset
+        tx.transaction['type'] = transaction['type']
         tx.transaction['action'] = 'withdraw_crypto'
         tx.transaction['disposal'] = False
         tx.transaction['datetime'] = transaction['created_at']
@@ -310,14 +317,41 @@ class Coinbase:
 
     @staticmethod
     def handle_exchange_withdrawal_transaction(asset, transaction):
-        # Has an accompanying 'send' transaction that covers it
-        pass
+        tx = Transaction()
+
+        tx.transaction['asset'] = asset
+        tx.transaction['type'] = transaction['type']
+        tx.transaction['action'] = 'withdraw_crypto'
+        tx.transaction['disposal'] = False
+        tx.transaction['datetime'] = transaction['created_at']
+        tx.transaction['initial_asset_quantity'] = abs(float(transaction['amount']['amount']))
+        tx.transaction['initial_asset_currency'] = asset
+        if transaction['details']['subtitle'] == 'From Coinbase Pro':
+            tx.transaction['initial_asset_location'] = 'Coinbase Pro'
+        else:
+            tx.transaction['initial_asset_location'] = 'Coinbase'
+        tx.transaction['initial_asset_address'] = None
+        tx.transaction['price'] = None
+        tx.transaction['final_asset_quantity'] = None
+        tx.transaction['final_asset_currency'] = asset
+        tx.transaction['final_asset_gbp'] = None
+        tx.transaction['final_asset_location'] = None
+        tx.transaction['final_asset_address'] = None
+        tx.transaction['fee_type'] = 'transfer'
+        tx.transaction['fee_quantity'] = None
+        tx.transaction['fee_currency'] = None
+        tx.transaction['fee_gbp'] = None
+        tx.transaction['source_transaction_id'] = transaction['id']
+        tx.transaction['source_trade_id'] = None
+
+        return pd.DataFrame(tx.transaction, index=[0])
 
     @staticmethod
     def handle_pro_deposit_transaction(asset, transaction):
         tx = Transaction()
 
         tx.transaction['asset'] = asset
+        tx.transaction['type'] = transaction['type']
         tx.transaction['action'] = 'withdraw_crypto'
         tx.transaction['disposal'] = False
         tx.transaction['datetime'] = transaction['created_at']
@@ -342,8 +376,31 @@ class Coinbase:
 
     @staticmethod
     def handle_pro_withdrawal_transaction(asset, transaction):
-        # Has an accompanying 'send' transaction that covers it
-        pass
+        tx = Transaction()
+
+        tx.transaction['asset'] = asset
+        tx.transaction['type'] = transaction['type']
+        tx.transaction['action'] = 'withdraw_crypto'
+        tx.transaction['disposal'] = False
+        tx.transaction['datetime'] = transaction['created_at']
+        tx.transaction['initial_asset_quantity'] = abs(float(transaction['amount']['amount']))
+        tx.transaction['initial_asset_currency'] = asset
+        tx.transaction['initial_asset_location'] = 'Coinbase Pro'
+        tx.transaction['initial_asset_address'] = None
+        tx.transaction['price'] = None
+        tx.transaction['final_asset_quantity'] = None
+        tx.transaction['final_asset_currency'] = asset
+        tx.transaction['final_asset_gbp'] = None
+        tx.transaction['final_asset_location'] = None
+        tx.transaction['final_asset_address'] = None
+        tx.transaction['fee_type'] = 'transfer'
+        tx.transaction['fee_quantity'] = None
+        tx.transaction['fee_currency'] = None
+        tx.transaction['fee_gbp'] = None
+        tx.transaction['source_transaction_id'] = transaction['id']
+        tx.transaction['source_trade_id'] = transaction['application']['id']
+
+        return pd.DataFrame(tx.transaction, index=[0])
 
     @staticmethod
     def create_transactions_dataframe(transaction_history):
@@ -375,18 +432,7 @@ class Coinbase:
 
         return transaction_df
 
-    def test(self):
-        # Set up authentication and make call to the API
-        path = self.base_url + 'accounts/19e01845-35e2-5553-91f3-f48050a0c09a/trades/896bc724-f386-57f2-a401-4ebfb6350fbe'
-        auth = CoinbaseAuth(self.api_key, self.api_secret)
-        r = requests.get(path, auth=auth).json()
-        print(r)
-
 
 if __name__ == '__main__':
     x = Coinbase()
     x.get_coinbase_transactions()
-    # x.get_transactions('f7b61c43-93c9-5b94-b4b0-719e09ad9888')
-    t = {'BAND': [{'id': '65bf3819-a9cd-58c5-9e89-2d519ba052f9', 'type': 'trade', 'status': 'completed', 'amount': {'amount': '-0.49046370', 'currency': 'BAND'}, 'native_amount': {'amount': '-2.23', 'currency': 'GBP'}, 'description': None, 'created_at': '2020-12-22T13:30:16Z', 'updated_at': '2020-12-22T13:30:16Z', 'resource': 'transaction', 'resource_path': '/v2/accounts/b06cf0ff-981a-5887-bdf8-8436f58c5e71/transactions/65bf3819-a9cd-58c5-9e89-2d519ba052f9', 'instant_exchange': False, 'trade': {'id': '896bc724-f386-57f2-a401-4ebfb6350fbe', 'resource': 'trade', 'resource_path': '/v2/accounts/19e01845-35e2-5553-91f3-f48050a0c09a/trades/896bc724-f386-57f2-a401-4ebfb6350fbe'}, 'details': {'title': 'Converted from Band Protocol', 'subtitle': 'Using BAND Wallet', 'header': 'Converted 0.4904637 BAND (£2.23)', 'health': 'positive', 'payment_method_name': 'BAND Wallet'}}, {'id': 'aeb4976e-134b-5146-85a2-e0a797c40922', 'type': 'send', 'status': 'completed', 'amount': {'amount': '0.16360186', 'currency': 'BAND'}, 'native_amount': {'amount': '0.75', 'currency': 'GBP'}, 'description': None, 'created_at': '2020-12-22T13:29:01Z', 'updated_at': '2020-12-22T13:29:01Z', 'resource': 'transaction', 'resource_path': '/v2/accounts/b06cf0ff-981a-5887-bdf8-8436f58c5e71/transactions/aeb4976e-134b-5146-85a2-e0a797c40922', 'instant_exchange': False, 'off_chain_status': 'completed', 'network': {'status': 'off_blockchain', 'status_description': None}, 'from': {'id': '8a456d7f-fdca-5dd0-9e32-89f84ac433f0', 'resource': 'user', 'resource_path': '/v2/users/8a456d7f-fdca-5dd0-9e32-89f84ac433f0', 'currency': 'BAND'}, 'details': {'title': 'Received Band Protocol', 'subtitle': 'From Coinbase Earn', 'header': 'Received 0.16360186 BAND (£0.75)', 'health': 'positive'}}, {'id': '08c3ca12-2af7-5a8e-8c76-ac3f97f20c06', 'type': 'send', 'status': 'completed', 'amount': {'amount': '0.16360186', 'currency': 'BAND'}, 'native_amount': {'amount': '0.75', 'currency': 'GBP'}, 'description': None, 'created_at': '2020-12-22T13:28:27Z', 'updated_at': '2020-12-22T13:28:27Z', 'resource': 'transaction', 'resource_path': '/v2/accounts/b06cf0ff-981a-5887-bdf8-8436f58c5e71/transactions/08c3ca12-2af7-5a8e-8c76-ac3f97f20c06', 'instant_exchange': False, 'off_chain_status': 'completed', 'network': {'status': 'off_blockchain', 'status_description': None}, 'from': {'id': '8a456d7f-fdca-5dd0-9e32-89f84ac433f0', 'resource': 'user', 'resource_path': '/v2/users/8a456d7f-fdca-5dd0-9e32-89f84ac433f0', 'currency': 'BAND'}, 'details': {'title': 'Received Band Protocol', 'subtitle': 'From Coinbase Earn', 'header': 'Received 0.16360186 BAND (£0.75)', 'health': 'positive'}}, {'id': '72b806d3-d0b7-5c07-b4fc-5548d582f289', 'type': 'send', 'status': 'completed', 'amount': {'amount': '0.16325998', 'currency': 'BAND'}, 'native_amount': {'amount': '0.75', 'currency': 'GBP'}, 'description': None, 'created_at': '2020-12-22T13:28:00Z', 'updated_at': '2020-12-22T13:28:00Z', 'resource': 'transaction', 'resource_path': '/v2/accounts/b06cf0ff-981a-5887-bdf8-8436f58c5e71/transactions/72b806d3-d0b7-5c07-b4fc-5548d582f289', 'instant_exchange': False, 'off_chain_status': 'completed', 'network': {'status': 'off_blockchain', 'status_description': None}, 'from': {'id': '8a456d7f-fdca-5dd0-9e32-89f84ac433f0', 'resource': 'user', 'resource_path': '/v2/users/8a456d7f-fdca-5dd0-9e32-89f84ac433f0', 'currency': 'BAND'}, 'details': {'title': 'Received Band Protocol', 'subtitle': 'From Coinbase Earn', 'header': 'Received 0.16325998 BAND (£0.75)', 'health': 'positive'}}]}
-    x.create_transactions_dataframe(t)
-    # x.test()
