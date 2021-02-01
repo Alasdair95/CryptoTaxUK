@@ -5,6 +5,7 @@ class Transaction:
         self.transaction = {
             'asset': None,  # Which crypto
             'action': None,  # exchange_fiat_for_crypto, exchange_crypto_for_crypto, exchange_crypto_for_fiat, etc...
+            'type': None,  # How Coinbase categorise the action
             'disposal': None,  # Bool - is the action considered a disposal by HMRC
             'datetime': None,  # Datetime of the action
             'initial_asset_quantity': None,  # Quantity of the initial asset in the action
