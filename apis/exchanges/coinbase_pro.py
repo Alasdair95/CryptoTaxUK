@@ -22,14 +22,14 @@ class CoinbasePro:
         # Get list of products
         products = self.get_products()
 
-        # Loop through products and keep products with transactions
+        # Loop through products and keep products with fills transactions
         all_fills = []
         for product_id in products:
-            transactions = self.transactions_exist(product_id)
+            transactions = self.get_fills(product_id)
             if transactions:
                 all_fills = all_fills + transactions
 
-        # Convert all transactions into pandas dataframes
+        # Create dataframe of all fills transactions
         all_fills_dataframes = []
         for fill in all_fills:
             all_fills_dataframes.append(CoinbasePro.create_fills_dataframe(fill))
@@ -39,22 +39,27 @@ class CoinbasePro:
         # Get all account ids and their corresponding assets
         accounts = self.get_accounts()
 
+        # Get all deposit transactions
         all_deposits = self.get_deposits(accounts)
 
+        # Create dataframe of all deposit transactions
         all_deposits_dataframes = []
         for deposit in all_deposits:
             all_deposits_dataframes.append(CoinbasePro.create_deposits_dataframe(deposit))
 
         df_deposits = pd.concat(all_deposits_dataframes)
 
+        # Get all withdrawal transactions
         all_withdrawals = self.get_withdrawals(accounts)
 
+        # Create dataframe of all withdrawal transactions
         all_withdrawals_dataframe = []
         for withdrawal in all_withdrawals:
             all_withdrawals_dataframe.append(CoinbasePro.create_withdrawals_dataframe(withdrawal))
 
         df_withdrawals = pd.concat(all_withdrawals_dataframe)
 
+        # Union all transaction dataframes and sort by datetime
         df_transactions = pd.concat([df_fills, df_deposits, df_withdrawals]).sort_values(by='datetime')
 
         return df_transactions
@@ -75,19 +80,24 @@ class CoinbasePro:
         return products
 
     def get_accounts(self):
+        """
+        Return dict of all account_ids and their corresponding currency
+        """
+
         path = self.base_url + 'accounts'
 
         # Set up authentication and make call to the API
         auth = CoinbaseProAuth(self.api_key, self.api_secret, self.passphrase)
         r = requests.get(path, auth=auth).json()
 
+        # Create dict of all currencies and their account ids
         accounts = {i['id']: i['currency'] for i in r}
 
         return accounts
 
-    def transactions_exist(self, product_id):
+    def get_fills(self, product_id):
         """
-        Function to return True if there has ever been a transaction for a given product id
+        Function to return fills transactions if there has ever been a transaction for a given product id
         """
 
         # Set up authentication and make call to the API
@@ -96,6 +106,7 @@ class CoinbasePro:
         auth = CoinbaseProAuth(self.api_key, self.api_secret, self.passphrase)
         r = requests.get(path, auth=auth, params=params).json()
 
+        # Only return response if the product_id has any fills transactions
         if len(r) > 0:
             return r
 
@@ -137,9 +148,15 @@ class CoinbasePro:
 
     @staticmethod
     def create_fills_dataframe(fill):
+        """
+        Take individual fill transaction and use to populate a Transaction object
+        """
+
+        # Handle fiat transactions (buy/sell)
         if fill['product_id'].split('-')[1] in ['GBP', 'EUR']:
             side = fill['side']
 
+            # Buying crypto with fiat
             if side == 'buy':
                 tx = Transaction()
 
@@ -167,6 +184,7 @@ class CoinbasePro:
 
                 return pd.DataFrame(tx.transaction, index=[0])
 
+            # Selling crypto for fiat
             else:
                 tx = Transaction()
 
@@ -194,6 +212,7 @@ class CoinbasePro:
 
                 return pd.DataFrame(tx.transaction, index=[0])
 
+        # Exchanging crypto for crypto
         else:
             side = fill['side']
 
@@ -309,6 +328,10 @@ class CoinbasePro:
 
     @staticmethod
     def create_deposits_dataframe(deposit):
+        """
+        Take individual deposit transaction and use to populate a Transaction object
+        """
+
         if deposit['completed_at']:  # Don't process if deposit was never completed
             tx = Transaction()
 
@@ -350,6 +373,10 @@ class CoinbasePro:
 
     @staticmethod
     def create_withdrawals_dataframe(withdrawal):
+        """
+        Take individual withdrawal transaction and use to populate a Transaction object
+        """
+
         if withdrawal['completed_at']:  # Don't process if deposit was never completed
             tx = Transaction()
 
