@@ -354,7 +354,10 @@ class CoinbasePro:
             if 'crypto_address' in deposit['details'].keys():
                 tx.transaction['initial_asset_location'] = None
             else:
-                tx.transaction['initial_asset_location'] = 'Coinbase'
+                if deposit['currency'] not in ['GBP', 'EUR']:
+                    tx.transaction['initial_asset_location'] = 'Coinbase'
+                else:
+                    tx.transaction['initial_asset_location'] = None
             tx.transaction['initial_asset_address'] = deposit['details'].get('crypto_address')
             tx.transaction['price'] = None
             tx.transaction['final_asset_quantity'] = deposit['amount']
