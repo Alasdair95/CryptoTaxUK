@@ -224,12 +224,12 @@ class CoinbasePro:
                 sell_tx.transaction['disposal'] = True
                 sell_tx.transaction['datetime'] = dt.strptime(fill['created_at'],
                                                               '%Y-%m-%dT%H:%M:%S.%fZ').strftime('%Y-%m-%d %H:%M:%S')
-                sell_tx.transaction['initial_asset_quantity'] = float(fill['price']) * float(fill['size'])
+                sell_tx.transaction['initial_asset_quantity'] = fill['size']
                 sell_tx.transaction['initial_asset_currency'] = fill['product_id'].split('-')[0]
                 sell_tx.transaction['initial_asset_location'] = 'Coinbase Pro'
                 sell_tx.transaction['initial_asset_address'] = None
                 sell_tx.transaction['price'] = fill['price']
-                sell_tx.transaction['final_asset_quantity'] = fill['size']
+                sell_tx.transaction['final_asset_quantity'] = float(fill['price']) * float(fill['size'])
                 sell_tx.transaction['final_asset_currency'] = fill['product_id'].split('-')[1]
                 sell_tx.transaction['final_asset_gbp'] = None
                 sell_tx.transaction['final_asset_location'] = 'Coinbase Pro'
@@ -250,12 +250,12 @@ class CoinbasePro:
                 buy_tx.transaction['disposal'] = False
                 buy_tx.transaction['datetime'] = dt.strptime(fill['created_at'],
                                                              '%Y-%m-%dT%H:%M:%S.%fZ').strftime('%Y-%m-%d %H:%M:%S')
-                buy_tx.transaction['initial_asset_quantity'] = float(fill['price']) * float(fill['size'])
+                buy_tx.transaction['initial_asset_quantity'] = fill['size']
                 buy_tx.transaction['initial_asset_currency'] = fill['product_id'].split('-')[0]
                 buy_tx.transaction['initial_asset_location'] = 'Coinbase Pro'
                 buy_tx.transaction['initial_asset_address'] = None
                 buy_tx.transaction['price'] = fill['price']
-                buy_tx.transaction['final_asset_quantity'] = fill['size']
+                buy_tx.transaction['final_asset_quantity'] = float(fill['price']) * float(fill['size'])
                 buy_tx.transaction['final_asset_currency'] = fill['product_id'].split('-')[1]
                 buy_tx.transaction['final_asset_gbp'] = None
                 buy_tx.transaction['final_asset_location'] = 'Coinbase Pro'
@@ -345,7 +345,7 @@ class CoinbasePro:
             elif deposit['currency'] in ['GBP', 'EUR']:
                 tx.transaction['type'] = None
             else:
-                tx.transaction['type'] = 'withdraw_to_coinbase'
+                tx.transaction['type'] = 'deposit_from_coinbase'
             tx.transaction['disposal'] = False
             tx.transaction['datetime'] = dt.strptime(deposit['created_at'],
                                                      '%Y-%m-%d %H:%M:%S.%f+00').strftime('%Y-%m-%d %H:%M:%S')
@@ -385,12 +385,19 @@ class CoinbasePro:
                 tx.transaction['action'] = 'withdraw_fiat'
             else:
                 tx.transaction['action'] = 'withdraw_crypto'
-            if 'crypto_address' in withdrawal['details'].keys():
+            if any(['crypto_address' in withdrawal['details'].keys(),
+                    'sent_to_address' in withdrawal['details'].keys()]):
                 tx.transaction['type'] = 'external'
+                try:
+                    tx.transaction['final_asset_address'] = withdrawal['details']['crypto_address']
+                except:
+                    tx.transaction['final_asset_address'] = withdrawal['details'].get('sent_to_address')
             elif withdrawal['currency'] in ['GBP', 'EUR']:
                 tx.transaction['type'] = None
+                tx.transaction['final_asset_address'] = None
             else:
                 tx.transaction['type'] = 'withdraw_to_coinbase'
+                tx.transaction['final_asset_address'] = None
             tx.transaction['disposal'] = False
             tx.transaction['datetime'] = dt.strptime(withdrawal['created_at'],
                                                      '%Y-%m-%d %H:%M:%S.%f+00').strftime('%Y-%m-%d %H:%M:%S')
@@ -403,10 +410,9 @@ class CoinbasePro:
             tx.transaction['final_asset_currency'] = withdrawal['currency']
             tx.transaction['final_asset_gbp'] = None
             tx.transaction['final_asset_location'] = 'Coinbase Pro'
-            tx.transaction['final_asset_address'] = withdrawal['details'].get('crypto_address')
-            tx.transaction['fee_type'] = 'exchange'
-            tx.transaction['fee_quantity'] = None
-            tx.transaction['fee_currency'] = None
+            tx.transaction['fee_type'] = 'withdrawal'
+            tx.transaction['fee_quantity'] = withdrawal['details'].get('fee')
+            tx.transaction['fee_currency'] = withdrawal['currency']
             tx.transaction['fee_gbp'] = None
             tx.transaction['source_transaction_id'] = withdrawal['id']
             tx.transaction['source_trade_id'] = None
