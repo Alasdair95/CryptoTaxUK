@@ -391,6 +391,7 @@ class CoinbasePro:
             if any(['crypto_address' in withdrawal['details'].keys(),
                     'sent_to_address' in withdrawal['details'].keys()]):
                 tx.transaction['type'] = 'external'
+                tx.transaction['final_asset_location'] = None
                 try:
                     tx.transaction['final_asset_address'] = withdrawal['details']['crypto_address']
                 except:
@@ -398,9 +399,11 @@ class CoinbasePro:
             elif withdrawal['currency'] in ['GBP', 'EUR']:
                 tx.transaction['type'] = None
                 tx.transaction['final_asset_address'] = None
+                tx.transaction['final_asset_location'] = None
             else:
                 tx.transaction['type'] = 'withdraw_to_coinbase'
                 tx.transaction['final_asset_address'] = None
+                tx.transaction['final_asset_location'] = 'Coinbase'
             tx.transaction['disposal'] = False
             tx.transaction['datetime'] = dt.strptime(withdrawal['created_at'],
                                                      '%Y-%m-%d %H:%M:%S.%f+00').strftime('%Y-%m-%d %H:%M:%S')
@@ -412,7 +415,6 @@ class CoinbasePro:
             tx.transaction['final_asset_quantity'] = withdrawal['amount']
             tx.transaction['final_asset_currency'] = withdrawal['currency']
             tx.transaction['final_asset_gbp'] = None
-            tx.transaction['final_asset_location'] = 'Coinbase Pro'
             tx.transaction['fee_type'] = 'withdrawal'
             tx.transaction['fee_quantity'] = withdrawal['details'].get('fee')
             tx.transaction['fee_currency'] = withdrawal['currency']
