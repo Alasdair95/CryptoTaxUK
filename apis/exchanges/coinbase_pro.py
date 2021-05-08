@@ -4,7 +4,7 @@ import pandas as pd
 from datetime import datetime as dt
 
 from apis.authentication import CoinbaseProAuth
-from apis.helpers import Transaction
+from apis.helpers import Transaction, ConvertToGBP
 
 
 class CoinbasePro:
@@ -19,48 +19,85 @@ class CoinbasePro:
         Method to execute all other methods in correct order to return all historical transactions from Coinbase.
         """
 
-        # Get list of products
-        products = self.get_products()
+        # # Get list of products
+        # products = self.get_products()
+        #
+        # # Loop through products and keep products with fills transactions
+        # all_fills = []
+        # for product_id in products:
+        #     transactions = self.get_fills(product_id)
+        #     if transactions:
+        #         all_fills = all_fills + transactions
+        #
+        # # Create dataframe of all fills transactions
+        # all_fills_dataframes = []
+        # for fill in all_fills:
+        #     all_fills_dataframes.append(CoinbasePro.create_fills_dataframe(fill))
+        #
+        # df_fills = pd.concat(all_fills_dataframes)
+        #
+        # # Get all account ids and their corresponding assets
+        # accounts = self.get_accounts()
+        #
+        # # Get all deposit transactions
+        # all_deposits = self.get_deposits(accounts)
+        #
+        # # Create dataframe of all deposit transactions
+        # all_deposits_dataframes = []
+        # for deposit in all_deposits:
+        #     all_deposits_dataframes.append(CoinbasePro.create_deposits_dataframe(deposit))
+        #
+        # df_deposits = pd.concat(all_deposits_dataframes)
+        #
+        # # Get all withdrawal transactions
+        # all_withdrawals = self.get_withdrawals(accounts)
+        #
+        # # Create dataframe of all withdrawal transactions
+        # all_withdrawals_dataframe = []
+        # for withdrawal in all_withdrawals:
+        #     all_withdrawals_dataframe.append(CoinbasePro.create_withdrawals_dataframe(withdrawal))
+        #
+        # df_withdrawals = pd.concat(all_withdrawals_dataframe)
+        #
+        # # Union all transaction dataframes and sort by datetime
+        # df_transactions = pd.concat([df_fills, df_deposits, df_withdrawals]).sort_values(by='datetime')
 
-        # Loop through products and keep products with fills transactions
-        all_fills = []
-        for product_id in products:
-            transactions = self.get_fills(product_id)
-            if transactions:
-                all_fills = all_fills + transactions
+        df_transactions = pd.read_csv(r"C:\Users\alasd\Documents\Projects Misc\coinbase_pro.csv")
 
-        # Create dataframe of all fills transactions
-        all_fills_dataframes = []
-        for fill in all_fills:
-            all_fills_dataframes.append(CoinbasePro.create_fills_dataframe(fill))
+        # Loop through and get GBP values where missing
+        final_asset_gbp = []
+        fee_gbp = []
+        for row in df_transactions.itertuples():
+            # Calculate GBP value for all disposals
+            if row.disposal:
+                if row.final_asset_currency == 'GBP':
+                    final_asset_gbp.append(row.final_asset_quantity)
+                else:
+                    asset = row.final_asset_currency
+                    datetime = dt.strptime(row.datetime, '%Y-%m-%d %H:%M:%S').strftime('%Y-%m-%d %H:%M:00')
+                    quantity = row.final_asset_quantity
+                    c = ConvertToGBP(asset, datetime, quantity)
+                    gbp_value = c.convert_to_gbp()
+                    final_asset_gbp.append(gbp_value)
+            else:
+                final_asset_gbp.append(None)
 
-        df_fills = pd.concat(all_fills_dataframes)
+            # Calculate all fees in GBP
+            if not pd.isna(row.fee_currency):
+                if any([row.fee_currency == 'GBP', row.fee_quantity == 0.0]):
+                    fee_gbp.append(row.fee_quantity)
+                else:
+                    asset = row.fee_currency
+                    datetime = dt.strptime(row.datetime, '%Y-%m-%d %H:%M:%S').strftime('%Y-%m-%d %H:%M:00')
+                    quantity = row.fee_quantity
+                    c = ConvertToGBP(asset, datetime, quantity)
+                    gbp_value = c.convert_to_gbp()
+                    fee_gbp.append(gbp_value)
+            else:
+                fee_gbp.append(None)
 
-        # Get all account ids and their corresponding assets
-        accounts = self.get_accounts()
-
-        # Get all deposit transactions
-        all_deposits = self.get_deposits(accounts)
-
-        # Create dataframe of all deposit transactions
-        all_deposits_dataframes = []
-        for deposit in all_deposits:
-            all_deposits_dataframes.append(CoinbasePro.create_deposits_dataframe(deposit))
-
-        df_deposits = pd.concat(all_deposits_dataframes)
-
-        # Get all withdrawal transactions
-        all_withdrawals = self.get_withdrawals(accounts)
-
-        # Create dataframe of all withdrawal transactions
-        all_withdrawals_dataframe = []
-        for withdrawal in all_withdrawals:
-            all_withdrawals_dataframe.append(CoinbasePro.create_withdrawals_dataframe(withdrawal))
-
-        df_withdrawals = pd.concat(all_withdrawals_dataframe)
-
-        # Union all transaction dataframes and sort by datetime
-        df_transactions = pd.concat([df_fills, df_deposits, df_withdrawals]).sort_values(by='datetime')
+        df_transactions['final_asset_gbp'] = final_asset_gbp
+        df_transactions['fee_gbp'] = fee_gbp
 
         return df_transactions
 
@@ -198,7 +235,7 @@ class CoinbasePro:
                 tx.transaction['initial_asset_location'] = 'Coinbase Pro'
                 tx.transaction['initial_asset_address'] = None
                 tx.transaction['price'] = fill['price']
-                tx.transaction['final_asset_quantity'] = fill['size']
+                tx.transaction['final_asset_quantity'] = float(fill['price']) * float(fill['size'])
                 tx.transaction['final_asset_currency'] = fill['product_id'].split('-')[1]
                 tx.transaction['final_asset_gbp'] = None
                 tx.transaction['final_asset_location'] = 'Coinbase Pro'
@@ -416,7 +453,7 @@ class CoinbasePro:
             tx.transaction['final_asset_currency'] = withdrawal['currency']
             tx.transaction['final_asset_gbp'] = None
             tx.transaction['fee_type'] = 'withdrawal'
-            tx.transaction['fee_quantity'] = withdrawal['details'].get('fee')
+            tx.transaction['fee_quantity'] = withdrawal['details'].get('fee', 0)
             tx.transaction['fee_currency'] = withdrawal['currency']
             tx.transaction['fee_gbp'] = None
             tx.transaction['source_transaction_id'] = withdrawal['id']
