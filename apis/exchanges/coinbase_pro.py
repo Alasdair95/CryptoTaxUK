@@ -19,50 +19,48 @@ class CoinbasePro:
         Method to execute all other methods in correct order to return all historical transactions from Coinbase.
         """
 
-        # # Get list of products
-        # products = self.get_products()
-        #
-        # # Loop through products and keep products with fills transactions
-        # all_fills = []
-        # for product_id in products:
-        #     transactions = self.get_fills(product_id)
-        #     if transactions:
-        #         all_fills = all_fills + transactions
-        #
-        # # Create dataframe of all fills transactions
-        # all_fills_dataframes = []
-        # for fill in all_fills:
-        #     all_fills_dataframes.append(CoinbasePro.create_fills_dataframe(fill))
-        #
-        # df_fills = pd.concat(all_fills_dataframes)
-        #
-        # # Get all account ids and their corresponding assets
-        # accounts = self.get_accounts()
-        #
-        # # Get all deposit transactions
-        # all_deposits = self.get_deposits(accounts)
-        #
-        # # Create dataframe of all deposit transactions
-        # all_deposits_dataframes = []
-        # for deposit in all_deposits:
-        #     all_deposits_dataframes.append(CoinbasePro.create_deposits_dataframe(deposit))
-        #
-        # df_deposits = pd.concat(all_deposits_dataframes)
-        #
-        # # Get all withdrawal transactions
-        # all_withdrawals = self.get_withdrawals(accounts)
-        #
-        # # Create dataframe of all withdrawal transactions
-        # all_withdrawals_dataframe = []
-        # for withdrawal in all_withdrawals:
-        #     all_withdrawals_dataframe.append(CoinbasePro.create_withdrawals_dataframe(withdrawal))
-        #
-        # df_withdrawals = pd.concat(all_withdrawals_dataframe)
-        #
-        # # Union all transaction dataframes and sort by datetime
-        # df_transactions = pd.concat([df_fills, df_deposits, df_withdrawals]).sort_values(by='datetime')
+        # Get list of products
+        products = self.get_products()
 
-        df_transactions = pd.read_csv(r"C:\Users\alasd\Documents\Projects Misc\coinbase_pro.csv")
+        # Loop through products and keep products with fills transactions
+        all_fills = []
+        for product_id in products:
+            transactions = self.get_fills(product_id)
+            if transactions:
+                all_fills = all_fills + transactions
+
+        # Create dataframe of all fills transactions
+        all_fills_dataframes = []
+        for fill in all_fills:
+            all_fills_dataframes.append(CoinbasePro.create_fills_dataframe(fill))
+
+        df_fills = pd.concat(all_fills_dataframes)
+
+        # Get all account ids and their corresponding assets
+        accounts = self.get_accounts()
+
+        # Get all deposit transactions
+        all_deposits = self.get_deposits(accounts)
+
+        # Create dataframe of all deposit transactions
+        all_deposits_dataframes = []
+        for deposit in all_deposits:
+            all_deposits_dataframes.append(CoinbasePro.create_deposits_dataframe(deposit))
+
+        df_deposits = pd.concat(all_deposits_dataframes)
+
+        # Get all withdrawal transactions
+        all_withdrawals = self.get_withdrawals(accounts)
+
+        # Create dataframe of all withdrawal transactions
+        all_withdrawals_dataframe = []
+        for withdrawal in all_withdrawals:
+            all_withdrawals_dataframe.append(CoinbasePro.create_withdrawals_dataframe(withdrawal))
+
+        df_withdrawals = pd.concat(all_withdrawals_dataframe)
+
+        # Union all transaction dataframes and sort by datetime
+        df_transactions = pd.concat([df_fills, df_deposits, df_withdrawals]).sort_values(by='datetime')
 
         # Loop through and get GBP values where missing
         final_asset_gbp = []
