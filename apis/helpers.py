@@ -1,5 +1,6 @@
 import os
 import requests
+from datetime import datetime, timedelta
 
 from apis.authentication import CoinbaseProAuth
 
@@ -35,27 +36,42 @@ class ConvertToGBP:
     def __init__(self, asset, dt, quantity):
         self.asset = asset
         self.dt = dt
-        self.quantity = quantity
+        self.quantity = float(quantity)
         self.api_key = os.environ.get('COINBASE_PRO_API_KEY')
         self.api_secret = os.environ.get('COINBASE_PRO_API_SECRET')
         self.passphrase = os.environ.get('COINBASE_PRO_API_PASSPHRASE')
         self.base_url = 'https://api.pro.coinbase.com/'
 
     def convert_to_gbp(self):
-        quantity_btc = round(self.quantity * self.get_historical_crypto_btc_price(), 8)
-
-        # Must first convert to USD because most exchanges only have recent GBP prices but will have historical USD
-        quantity_usd = round(quantity_btc * self.get_historical_btc_usd_price(), 2)
-
-        quantity_gbp = round(quantity_usd * self.get_historical_usd_gbp_price(), 2)
-
-        return quantity_gbp
+        if self.asset == 'GBP':
+            pass
+        # elif self.asset == 'EUR':
+        #     return round(self.quantity * self.get_historical_fiat_gbp_price(base='EUR'), 2)
+        elif self.asset == 'BTC':
+            quantity_usd = round(self.quantity * self.get_historical_btc_usd_price(), 2)
+            return round(quantity_usd * self.get_historical_fiat_gbp_price(), 2)
+        elif self.asset in ['EUR', 'USD']:
+            return round(self.quantity * self.get_historical_fiat_gbp_price(base=self.asset), 2)
+        else:
+            quantity_btc = round(self.quantity * self.get_historical_crypto_btc_price(), 8)
+            # Must first convert to USD because most exchanges only have recent GBP prices but will have historical USD
+            quantity_usd = round(quantity_btc * self.get_historical_btc_usd_price(), 2)
+            return round(quantity_usd * self.get_historical_fiat_gbp_price(), 2)
 
     def get_historical_crypto_btc_price(self):
+        print(self.asset, self.dt)
+        start = self.dt
+        end = (datetime.strptime(self.dt, '%Y-%m-%d %H:%M:00') + timedelta(hours=1)).strftime('%Y-%m-%d %H:%M:00')
+
         path = self.base_url + f'products/{self.asset}-BTC/candles'
+        # params = {
+        #     'start': f'{self.dt}',
+        #     'end': f'{self.dt}',
+        #     'granularity': 300
+        # }
         params = {
-            'start': f'{self.dt}',
-            'end': f'{self.dt}',
+            'start': start,
+            'end': end,
             'granularity': 60
         }
         auth = CoinbaseProAuth(self.api_key, self.api_secret, self.passphrase)
@@ -75,16 +91,21 @@ class ConvertToGBP:
 
         return r[0][4]
 
-    def get_historical_usd_gbp_price(self):
-        url = f'https://api.ratesapi.io/api/{self.dt.split("T")[0]}?base=USD&symbols=USD,GBP'
-
+    def get_historical_fiat_gbp_price(self, base='USD'):
+        url = f'https://api.ratesapi.io/api/{self.dt.split(" ")[0]}?base={base}&symbols={base},GBP'
         r = requests.get(url)
-
         if r.status_code == 200:
             return r.json()['rates']['GBP']
+        else:
+            url = f'https://api.ratesapi.io/api/{self.dt.split(" ")[0]}?base=USD&symbols={base},GBP'
+            r = requests.get(url)
+            if r.status_code == 200:
+                return r.json()['rates']['GBP'] / r.json()['rates'][base]
+
+
 
 
 if __name__ == '__main__':
-    x = ConvertToGBP('NMR', '2021-03-13T13:54:00', 0.069)
-    x.convert_to_gbp()
-
+    x = ConvertToGBP('EUR', '2017-11-23 19:31:00', 0.069)
+    # x.convert_to_gbp()
+    x.get_historical_fiat_gbp_price()
