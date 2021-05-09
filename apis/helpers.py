@@ -59,16 +59,10 @@ class ConvertToGBP:
             return round(quantity_usd * self.get_historical_fiat_gbp_price(), 2)
 
     def get_historical_crypto_btc_price(self):
-        print(self.asset, self.dt)
         start = self.dt
         end = (datetime.strptime(self.dt, '%Y-%m-%d %H:%M:00') + timedelta(hours=1)).strftime('%Y-%m-%d %H:%M:00')
 
         path = self.base_url + f'products/{self.asset}-BTC/candles'
-        # params = {
-        #     'start': f'{self.dt}',
-        #     'end': f'{self.dt}',
-        #     'granularity': 300
-        # }
         params = {
             'start': start,
             'end': end,
@@ -106,6 +100,6 @@ class ConvertToGBP:
 
 
 if __name__ == '__main__':
-    x = ConvertToGBP('EUR', '2017-11-23 19:31:00', 0.069)
-    # x.convert_to_gbp()
-    x.get_historical_fiat_gbp_price()
+    x = ConvertToGBP('ETH', '2017-11-21 15:43:00', 0.00042)
+    x.convert_to_gbp()
+    # x.get_historical_fiat_gbp_price()
