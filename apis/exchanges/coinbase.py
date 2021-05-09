@@ -2,10 +2,10 @@ import os
 import re
 import requests
 import pandas as pd
-from datetime import datetime
+from datetime import datetime as dt
 
 from apis.authentication import CoinbaseAuth
-from apis.helpers import Transaction
+from apis.helpers import Transaction, ConvertToGBP
 
 
 class Coinbase:
@@ -127,6 +127,66 @@ class Coinbase:
                                                       withdrawals_to_remove['source_transaction_id_y'].tolist()
 
         df_final = df_all[~df_all.source_transaction_id.isin(withdrawal_source_transaction_ids_to_remove)]
+
+        # df_final = pd.read_csv(r"C:\Users\alasd\Documents\Projects Misc\coinbase.csv")
+
+        df_crypto_crypto_buys = df_final.loc[(df_final['action'] == 'exchange_crypto_for_crypto') &
+                                             pd.isna(df_final['initial_asset_currency'])].drop(columns=['initial_asset_quantity', 'initial_asset_currency'])
+
+        df_crypto_crypto_sells = df_final.loc[(df_final['action'] == 'exchange_crypto_for_crypto') &
+                                              pd.isna(df_final['final_asset_currency'])].drop(columns=['final_asset_quantity', 'final_asset_currency', 'final_asset_gbp'])
+
+        df_cc_sells = pd.merge(df_crypto_crypto_sells, df_crypto_crypto_buys[['final_asset_quantity', 'final_asset_currency', 'final_asset_gbp', 'source_trade_id']], how='inner', left_on='source_trade_id', right_on='source_trade_id')
+
+        df_cc_buys = pd.merge(df_crypto_crypto_buys, df_crypto_crypto_sells[['initial_asset_quantity', 'initial_asset_currency', 'source_trade_id']], how='inner', left_on='source_trade_id', right_on='source_trade_id')
+
+        # Drop the origin 'exchange_crypto_for_crypto' records
+        df_final = df_final.loc[df_final['action'] != 'exchange_crypto_for_crypto']
+
+        df_final = df_final.append([df_cc_buys, df_cc_sells], sort=False)
+
+        # Sort by datetime again
+        df_final.sort_values(by='datetime', inplace=True)
+
+        # Loop through and get GBP values where missing
+        final_asset_gbp = []
+        fee_gbp = []
+        for row in df_final.itertuples():
+            # Calculate GBP value for all disposals
+            if row.disposal:
+                if pd.isna(row.final_asset_gbp):
+                    if not pd.isna(row.final_asset_gbp):
+                        final_asset_gbp.append(None)
+                    elif row.final_asset_currency == 'GBP':
+                        final_asset_gbp.append(row.final_asset_quantity)
+                    else:
+                        asset = row.final_asset_currency
+                        datetime = row.datetime.strftime('%Y-%m-%d %H:%M:00')
+                        quantity = row.final_asset_quantity
+                        c = ConvertToGBP(asset, datetime, quantity)
+                        gbp_value = c.convert_to_gbp()
+                        final_asset_gbp.append(gbp_value)
+                else:
+                    final_asset_gbp.append(row.final_asset_gbp)
+            else:
+                final_asset_gbp.append(row.final_asset_gbp)
+
+            # Calculate all fees in GBP
+            if not pd.isna(row.fee_currency):
+                if any([row.fee_currency == 'GBP', row.fee_quantity == 0.0]):
+                    fee_gbp.append(row.fee_quantity)
+                else:
+                    asset = row.fee_currency
+                    datetime = row.datetime.strftime('%Y-%m-%d %H:%M:00')
+                    quantity = row.fee_quantity
+                    c = ConvertToGBP(asset, datetime, quantity)
+                    gbp_value = c.convert_to_gbp()
+                    fee_gbp.append(gbp_value)
+            else:
+                fee_gbp.append(None)
+
+        df_final['final_asset_gbp'] = final_asset_gbp
+        df_final['fee_gbp'] = fee_gbp
 
         return df_final
 
@@ -343,7 +403,7 @@ class Coinbase:
         tx.transaction['type'] = transaction['type']
         tx.transaction['action'] = 'exchange_crypto_for_crypto'
         tx.transaction['disposal'] = True
-        tx.transaction['datetime'] = datetime.strptime(transaction['created_at'], '%Y-%m-%dT%H:%M:%SZ')
+        tx.transaction['datetime'] = dt.strptime(transaction['created_at'], '%Y-%m-%dT%H:%M:%SZ')
         tx.transaction['initial_asset_location'] = 'Coinbase'
         tx.transaction['initial_asset_address'] = None
         tx.transaction['price'] = None
@@ -482,7 +542,7 @@ class Coinbase:
 
         tx.transaction['asset'] = asset
         tx.transaction['disposal'] = False
-        tx.transaction['datetime'] = datetime.strptime(transaction['created_at'], '%Y-%m-%dT%H:%M:%SZ')
+        tx.transaction['datetime'] = dt.strptime(transaction['created_at'], '%Y-%m-%dT%H:%M:%SZ')
         tx.transaction['initial_asset_address'] = None
         tx.transaction['price'] = None
         tx.transaction['final_asset_location'] = 'Coinbase'
@@ -501,7 +561,7 @@ class Coinbase:
         else:
             tx.transaction['action'] = 'deposit_crypto'
         tx.transaction['disposal'] = False
-        tx.transaction['datetime'] = datetime.strptime(transaction['created_at'], '%Y-%m-%dT%H:%M:%SZ')
+        tx.transaction['datetime'] = dt.strptime(transaction['created_at'], '%Y-%m-%dT%H:%M:%SZ')
         tx.transaction['initial_asset_quantity'] = abs(float(transaction['amount']['amount']))
         tx.transaction['initial_asset_currency'] = asset
         tx.transaction['initial_asset_location'] = 'Coinbase'
@@ -535,7 +595,7 @@ class Coinbase:
         else:
             tx.transaction['action'] = 'withdraw_crypto'
         tx.transaction['disposal'] = False
-        tx.transaction['datetime'] = datetime.strptime(transaction['created_at'], '%Y-%m-%dT%H:%M:%SZ')
+        tx.transaction['datetime'] = dt.strptime(transaction['created_at'], '%Y-%m-%dT%H:%M:%SZ')
         tx.transaction['initial_asset_quantity'] = abs(float(transaction['amount']['amount']))
         tx.transaction['initial_asset_currency'] = asset
         if transaction['details']['subtitle'] == 'From Coinbase Pro':
@@ -569,7 +629,7 @@ class Coinbase:
         else:
             tx.transaction['action'] = 'withdraw_crypto'
         tx.transaction['disposal'] = False
-        tx.transaction['datetime'] = datetime.strptime(transaction['created_at'], '%Y-%m-%dT%H:%M:%SZ')
+        tx.transaction['datetime'] = dt.strptime(transaction['created_at'], '%Y-%m-%dT%H:%M:%SZ')
         tx.transaction['initial_asset_quantity'] = abs(float(transaction['amount']['amount']))
         tx.transaction['initial_asset_currency'] = asset
         tx.transaction['initial_asset_location'] = 'Coinbase'
@@ -600,7 +660,7 @@ class Coinbase:
         else:
             tx.transaction['action'] = 'withdraw_crypto'
         tx.transaction['disposal'] = False
-        tx.transaction['datetime'] = datetime.strptime(transaction['created_at'], '%Y-%m-%dT%H:%M:%SZ')
+        tx.transaction['datetime'] = dt.strptime(transaction['created_at'], '%Y-%m-%dT%H:%M:%SZ')
         tx.transaction['initial_asset_quantity'] = abs(float(transaction['amount']['amount']))
         tx.transaction['initial_asset_currency'] = asset
         tx.transaction['initial_asset_location'] = 'Coinbase Pro'
@@ -628,7 +688,7 @@ class Coinbase:
         tx.transaction['type'] = transaction['type']
         tx.transaction['action'] = 'deposit_fiat'
         tx.transaction['disposal'] = False
-        tx.transaction['datetime'] = datetime.strptime(transaction['created_at'], '%Y-%m-%dT%H:%M:%SZ')
+        tx.transaction['datetime'] = dt.strptime(transaction['created_at'], '%Y-%m-%dT%H:%M:%SZ')
         tx.transaction['initial_asset_quantity'] = None
         tx.transaction['initial_asset_currency'] = None
         tx.transaction['initial_asset_location'] = None
@@ -656,7 +716,7 @@ class Coinbase:
         tx.transaction['type'] = transaction['type']
         tx.transaction['action'] = 'withdraw_fiat'
         tx.transaction['disposal'] = False
-        tx.transaction['datetime'] = datetime.strptime(transaction['created_at'], '%Y-%m-%dT%H:%M:%SZ')
+        tx.transaction['datetime'] = dt.strptime(transaction['created_at'], '%Y-%m-%dT%H:%M:%SZ')
         tx.transaction['initial_asset_quantity'] = abs(float(transaction['amount']['amount']))
         tx.transaction['initial_asset_currency'] = asset
         tx.transaction['initial_asset_location'] = 'Coinbase'
@@ -718,7 +778,7 @@ class Coinbase:
                     tx.transaction['type'] = 'buy'
                     tx.transaction['action'] = 'exchange_fiat_for_crypto'
                     tx.transaction['disposal'] = False
-                    tx.transaction['datetime'] = datetime.strptime(i['updated_at'], '%Y-%m-%dT%H:%M:%SZ')
+                    tx.transaction['datetime'] = dt.strptime(i['updated_at'], '%Y-%m-%dT%H:%M:%SZ')
                     tx.transaction['initial_asset_quantity'] = abs(float(i['total']['amount']))
                     tx.transaction['initial_asset_currency'] = i['total']['currency']
                     tx.transaction['initial_asset_location'] = 'Coinbase'
@@ -755,7 +815,7 @@ class Coinbase:
                     tx.transaction['type'] = 'sell'
                     tx.transaction['action'] = 'exchange_crypto_for_fiat'
                     tx.transaction['disposal'] = True
-                    tx.transaction['datetime'] = datetime.strptime(i['updated_at'], '%Y-%m-%dT%H:%M:%SZ')
+                    tx.transaction['datetime'] = dt.strptime(i['updated_at'], '%Y-%m-%dT%H:%M:%SZ')
                     tx.transaction['initial_asset_quantity'] = abs(float(i['total']['amount']))
                     tx.transaction['initial_asset_currency'] = i['total']['currency']
                     tx.transaction['initial_asset_location'] = 'Coinbase'
