@@ -32,7 +32,7 @@ class Transaction:
         }
 
 
-class ConvertToGBP:
+class CoinbaseConvertToGBP:
     def __init__(self, asset, dt, quantity):
         self.asset = asset
         self.dt = dt
