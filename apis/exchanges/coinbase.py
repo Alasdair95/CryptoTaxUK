@@ -5,7 +5,7 @@ import pandas as pd
 from datetime import datetime as dt
 
 from apis.authentication import CoinbaseAuth
-from apis.helpers import Transaction, ConvertToGBP
+from apis.helpers import Transaction, CoinbaseConvertToGBP
 
 
 class Coinbase:
@@ -163,7 +163,7 @@ class Coinbase:
                         asset = row.final_asset_currency
                         datetime = row.datetime.strftime('%Y-%m-%d %H:%M:00')
                         quantity = row.final_asset_quantity
-                        c = ConvertToGBP(asset, datetime, quantity)
+                        c = CoinbaseConvertToGBP(asset, datetime, quantity)
                         gbp_value = c.convert_to_gbp()
                         final_asset_gbp.append(gbp_value)
                 else:
@@ -179,7 +179,7 @@ class Coinbase:
                     asset = row.fee_currency
                     datetime = row.datetime.strftime('%Y-%m-%d %H:%M:00')
                     quantity = row.fee_quantity
-                    c = ConvertToGBP(asset, datetime, quantity)
+                    c = CoinbaseConvertToGBP(asset, datetime, quantity)
                     gbp_value = c.convert_to_gbp()
                     fee_gbp.append(gbp_value)
             else:
