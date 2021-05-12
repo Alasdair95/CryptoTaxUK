@@ -163,7 +163,7 @@ class Binance:
         df_final['final_asset_gbp'] = final_asset_gbp
         df_final['fee_gbp'] = fee_gbp
 
-        return None
+        return df_final
 
     def get_symbols(self):
         path = '/api/v3/exchangeInfo'

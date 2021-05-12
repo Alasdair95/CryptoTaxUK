@@ -102,9 +102,6 @@ class BinanceConvertToGBP:
         self.asset = asset
         self.dt = dt
         self.quantity = float(quantity)
-        # self.api_key = os.environ.get('COINBASE_PRO_API_KEY')
-        # self.api_secret = os.environ.get('COINBASE_PRO_API_SECRET')
-        # self.passphrase = os.environ.get('COINBASE_PRO_API_PASSPHRASE')
         self.base_url = 'https://api.binance.com'
 
     def convert_to_gbp(self):
@@ -176,7 +173,55 @@ class BinanceConvertToGBP:
                 return r.json()['rates']['GBP'] / r.json()['rates'][base]
 
 
+class CoinAPIConvertToGBP:
+    def __init__(self, asset, dt, quantity):
+        self.asset = asset
+        self.dt = dt
+        self.quantity = float(quantity)
+        self.coin_api_key = os.environ.get('COIN_API_KEY')
+        self.base_url = 'https://rest.coinapi.io'
+
+    def convert_to_gbp(self):
+        quantity_usd = round(self.quantity * self.get_historical_btc_usd_price(), 2)
+        quantity_gbp = round(quantity_usd * self.get_historical_fiat_gbp_price(), 2)
+
+        return quantity_gbp
+
+    def get_historical_btc_usd_price(self):
+        headers = {
+            'X-CoinAPI-Key': self.coin_api_key
+        }
+
+        path = '/v1/symbols?filter_symbol_id=KRAKEN_SPOT_BCH_USD'
+
+        symbol_id = f'KRAKEN_SPOT_{self.asset}_USD'
+        path = f'/v1/ohlcv/{symbol_id}/history?'
+
+        params = {
+            'period_id': '1MIN',
+            'time_start': self.dt.replace(' ', 'T')
+        }
+
+        r = requests.get(self.base_url + path, headers=headers, params=params).json()
+
+        return r[0]['price_close']
+
+    def get_historical_fiat_gbp_price(self, base='USD'):
+        if base == 'USDT':
+            base = 'USD'
+
+        url = f'https://api.ratesapi.io/api/{self.dt.split(" ")[0]}?base={base}&symbols={base},GBP'
+        r = requests.get(url)
+        if r.status_code == 200:
+            return r.json()['rates']['GBP']
+        else:
+            url = f'https://api.ratesapi.io/api/{self.dt.split(" ")[0]}?base=USD&symbols={base},GBP'
+            r = requests.get(url)
+            if r.status_code == 200:
+                return r.json()['rates']['GBP'] / r.json()['rates'][base]
+
+
 if __name__ == '__main__':
-    x = BinanceConvertToGBP('USDT', '2020-06-08 18:30:00', 0.001949)
+    x = CoinAPIConvertToGBP('BCH', '2017-12-11 10:36:00', 0.00475456)
     x.convert_to_gbp()
     # x.get_historical_btc_usd_price()
