@@ -17,7 +17,6 @@ class Binance:
 
     def get_binance_transactions(self):
         # Get deposits
-        print('Getting deposits\n')
         deposits = self.get_deposits()
 
         deposit_dataframes = []
@@ -27,7 +26,6 @@ class Binance:
         df_deposits = pd.concat(deposit_dataframes)
 
         # Get withdrawals
-        print('Getting withdrawals\n')
         withdrawals = self.get_withdrawals()
 
         withdrawal_dataframes = []
@@ -37,7 +35,6 @@ class Binance:
         df_withdrawals = pd.concat(withdrawal_dataframes)
 
         # Get trades
-        print('Getting trades\n')
         symbols = self.get_symbols()
 
         count = 0
@@ -57,7 +54,6 @@ class Binance:
         df_trades = pd.concat(df_trades_list)
 
         # Get dust transactions
-        print('Getting dust conversions')
         dust_transactions = self.get_dust_transactions()
 
         dust_transactions_dataframes = []
@@ -155,9 +151,9 @@ class Binance:
                 fee_gbp.append(None)
 
             count_total += 1
-            print(f'{count_api} : API')
-            print(f'{count_cache}   : Cache')
-            print(f'{count_total}   : Total')
+            # print(f'{count_api} : API')
+            # print(f'{count_cache}   : Cache')
+            # print(f'{count_total}   : Total')
             print(f'{round(100 * count_total / df_final.shape[0], 2)}% done\n')
 
         df_final['final_asset_gbp'] = final_asset_gbp
@@ -285,17 +281,17 @@ class Binance:
         tx_sell.transaction['disposal'] = Binance.is_disposal(symbol, trade_action)
         tx_sell.transaction['datetime'] = dt.fromtimestamp(int(str(trade['time'])[:-3]))
         if trade_action == 'buy':
-            tx_sell.transaction['initial_asset_quantity'] = trade['quoteQty']
-            tx_sell.transaction['initial_asset_currency'] = symbol['quoteAsset']
-            tx_sell.transaction['initial_asset_address'] = None
-            tx_sell.transaction['final_asset_quantity'] = trade['qty']
-            tx_sell.transaction['final_asset_currency'] = symbol['baseAsset']
-        else:
             tx_sell.transaction['initial_asset_quantity'] = trade['qty']
             tx_sell.transaction['initial_asset_currency'] = symbol['baseAsset']
             tx_sell.transaction['initial_asset_address'] = None
             tx_sell.transaction['final_asset_quantity'] = trade['quoteQty']
             tx_sell.transaction['final_asset_currency'] = symbol['quoteAsset']
+        else:
+            tx_sell.transaction['initial_asset_quantity'] = trade['quoteQty']
+            tx_sell.transaction['initial_asset_currency'] = symbol['quoteAsset']
+            tx_sell.transaction['initial_asset_address'] = None
+            tx_sell.transaction['final_asset_quantity'] = trade['qty']
+            tx_sell.transaction['final_asset_currency'] = symbol['baseAsset']
         tx_sell.transaction['price'] = trade['price']
         tx_sell.transaction['final_asset_gbp'] = None
         tx_sell.transaction['initial_asset_location'] = 'Binance'

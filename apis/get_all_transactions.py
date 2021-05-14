@@ -16,10 +16,10 @@ class GetAllTransactions:
         # TODO: Add print statements for progress updates throughout all pipelines
 
         # Create transaction CSVs from exchanges
-        # self.create_exchange_transactions()
+        self.create_exchange_transactions()
 
         # Create transaction CSVs from wallets
-        # self.create_wallet_transactions()
+        self.create_wallet_transactions()
 
         transaction_dfs = []
 
@@ -92,25 +92,33 @@ class GetAllTransactions:
 
     def create_exchange_transactions(self):
         # Get Binance transactions
+        print('Getting Binance transactions...')
         binance = Binance()
         binance_transactions = binance.get_binance_transactions()
         binance_transactions = pd.to_csv(f'{self.save_path}binance.csv', index=False)
+        print('Got Binance transactions!\n')
 
         # Get Coinbase transactions
+        print('Getting Coinbase transactions...')
         coinbase = Coinbase()
         coinbase_transactions = coinbase.get_coinbase_transactions()
         coinbase_transactions = pd.to_csv(f'{self.save_path}coinbase.csv', index=False)
+        print('Got Coinbase transactions!\n')
 
         # Get Coinbase Pro transactions
+        print('Getting Coinbase Pro transactions...')
         coinbase_pro = CoinbasePro()
         coinbase_pro_transactions = coinbase_pro.get_coinbase_pro_transactions()
         coinbase_pro = pd.to_csv(f'{self.save_path}coinbase_pro.csv', index=False)
+        print('Got Coinbase Pro transactions!\n')
 
     def create_wallet_transactions(self):
         # Get Exodus transactions
+        print('Getting Exodus transactions...')
         exodus = Exodus()
         exodus_transactions = exodus.get_exodus_transactions()
         exodus_transactions = pd.to_csv(f'{self.save_path}exodus.csv', index=False)
+        print('Got Exodus transactions!\n')
 
 
 if __name__ == '__main__':
