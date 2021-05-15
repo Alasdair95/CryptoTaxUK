@@ -79,7 +79,7 @@ class Binance:
         count_cache = 0
         for row in df_final.itertuples():
             # Calculate GBP value for all disposals
-            if row.disposal:
+            if row.action in ['exchange_fiat_for_crypto', 'exchange_crypto_for_fiat', 'exchange_crypto_for_crypto']:
                 if row.final_asset_currency == 'GBP':
                     final_asset_gbp.append(row.final_asset_quantity)
                 else:
@@ -154,7 +154,7 @@ class Binance:
             # print(f'{count_api} : API')
             # print(f'{count_cache}   : Cache')
             # print(f'{count_total}   : Total')
-            print(f'{round(100 * count_total / df_final.shape[0], 2)}% done\n')
+            print(f'{round(100 * count_total / df_final.shape[0], 2)}% done')
 
         df_final['final_asset_gbp'] = final_asset_gbp
         df_final['fee_gbp'] = fee_gbp

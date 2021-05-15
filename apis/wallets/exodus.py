@@ -25,7 +25,7 @@ class Exodus:
         fee_gbp = []
         for row in df_transactions.itertuples():
             # Calculate GBP value for all disposals
-            if row.disposal:
+            if row.action in ['exchange_fiat_for_crypto', 'exchange_crypto_for_fiat', 'exchange_crypto_for_crypto']:
                 if pd.isna(row.final_asset_gbp):
                     if not pd.isna(row.final_asset_gbp):
                         final_asset_gbp.append(None)
@@ -35,8 +35,12 @@ class Exodus:
                         asset = row.final_asset_currency
                         datetime = dt.strptime(str(row.datetime), '%Y-%m-%d %H:%M:%S').strftime('%Y-%m-%d %H:%M:00')
                         quantity = row.final_asset_quantity
-                        c = BinanceConvertToGBP(asset, datetime, quantity)
-                        gbp_value = c.convert_to_gbp()
+                        try:
+                            c = BinanceConvertToGBP(asset, datetime, quantity)
+                            gbp_value = c.convert_to_gbp()
+                        except IndexError:
+                            c = CoinAPIConvertToGBP(asset, datetime, quantity)
+                            gbp_value = c.convert_to_gbp()
                         final_asset_gbp.append(gbp_value)
                 else:
                     final_asset_gbp.append(row.final_asset_gbp)
