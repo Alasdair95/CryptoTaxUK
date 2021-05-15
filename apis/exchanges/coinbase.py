@@ -130,8 +130,11 @@ class Coinbase:
 
         # df_final = pd.read_csv(r"C:\Users\alasd\Documents\Projects Misc\coinbase.csv")
 
+        # TODO: Change disposal to False for crypto to crypto buys
         df_crypto_crypto_buys = df_final.loc[(df_final['action'] == 'exchange_crypto_for_crypto') &
                                              pd.isna(df_final['initial_asset_currency'])].drop(columns=['initial_asset_quantity', 'initial_asset_currency'])
+
+        df_crypto_crypto_buys['disposal'] = False
 
         df_crypto_crypto_sells = df_final.loc[(df_final['action'] == 'exchange_crypto_for_crypto') &
                                               pd.isna(df_final['final_asset_currency'])].drop(columns=['final_asset_quantity', 'final_asset_currency', 'final_asset_gbp'])
@@ -153,7 +156,7 @@ class Coinbase:
         fee_gbp = []
         for row in df_final.itertuples():
             # Calculate GBP value for all disposals
-            if row.disposal:
+            if row.action in ['exchange_fiat_for_crypto', 'exchange_crypto_for_fiat', 'exchange_crypto_for_crypto']:
                 if pd.isna(row.final_asset_gbp):
                     if not pd.isna(row.final_asset_gbp):
                         final_asset_gbp.append(None)

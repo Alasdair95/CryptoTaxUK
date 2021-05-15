@@ -67,7 +67,7 @@ class CoinbasePro:
         fee_gbp = []
         for row in df_transactions.itertuples():
             # Calculate GBP value for all disposals
-            if row.disposal:
+            if row.action in ['exchange_fiat_for_crypto', 'exchange_crypto_for_fiat', 'exchange_crypto_for_crypto']:
                 if row.final_asset_currency == 'GBP':
                     final_asset_gbp.append(row.final_asset_quantity)
                 else:
