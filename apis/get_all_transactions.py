@@ -10,21 +10,26 @@ from apis.wallets.exodus import Exodus
 
 class GetAllTransactions:
     def __init__(self):
-        self.save_path = 'data/'
+        self.source_transactions_save_path = 'data/source_transactions/'
+        self.asset_transactions_save_path = 'data/asset_transactions/'
 
     def get_all_transactions(self):
-        # TODO: Add print statements for progress updates throughout all pipelines
+        if not os.path.exists(self.source_transactions_save_path):
+            os.makedirs(self.source_transactions_save_path)
+
+        if not os.path.exists(f'{self.asset_transactions_save_path}'):
+            os.makedirs(f'{self.asset_transactions_save_path}')
 
         # Create transaction CSVs from exchanges
-        self.create_exchange_transactions()
+        # self.create_exchange_transactions()
 
         # Create transaction CSVs from wallets
-        self.create_wallet_transactions()
+        # self.create_wallet_transactions()
 
         transaction_dfs = []
 
-        for i in os.listdir(self.save_path):
-            transaction_dfs.append(pd.read_csv(self.save_path+i))
+        for i in os.listdir(self.source_transactions_save_path):
+            transaction_dfs.append(pd.read_csv(self.source_transactions_save_path+i))
 
         all_transactions = pd.concat(transaction_dfs)
 
@@ -88,28 +93,29 @@ class GetAllTransactions:
             # Overwrite the dataframe in the dict
             asset_transaction_dfs[asset] = df
 
-        return asset_transaction_dfs
+        for asset, transactions in asset_transaction_dfs.items():
+            transactions.to_csv(f'{self.asset_transactions_save_path}{asset}.csv', index=False)
 
     def create_exchange_transactions(self):
         # Get Binance transactions
         print('Getting Binance transactions...')
         binance = Binance()
         binance_transactions = binance.get_binance_transactions()
-        binance_transactions = pd.to_csv(f'{self.save_path}binance.csv', index=False)
+        binance_transactions.to_csv(f'{self.source_transactions_save_path}binance.csv', index=False)
         print('Got Binance transactions!\n')
 
         # Get Coinbase transactions
         print('Getting Coinbase transactions...')
         coinbase = Coinbase()
         coinbase_transactions = coinbase.get_coinbase_transactions()
-        coinbase_transactions = pd.to_csv(f'{self.save_path}coinbase.csv', index=False)
+        coinbase_transactions.to_csv(f'{self.source_transactions_save_path}coinbase.csv', index=False)
         print('Got Coinbase transactions!\n')
 
         # Get Coinbase Pro transactions
         print('Getting Coinbase Pro transactions...')
         coinbase_pro = CoinbasePro()
         coinbase_pro_transactions = coinbase_pro.get_coinbase_pro_transactions()
-        coinbase_pro = pd.to_csv(f'{self.save_path}coinbase_pro.csv', index=False)
+        coinbase_pro_transactions.to_csv(f'{self.source_transactions_save_path}coinbase_pro.csv', index=False)
         print('Got Coinbase Pro transactions!\n')
 
     def create_wallet_transactions(self):
@@ -117,7 +123,7 @@ class GetAllTransactions:
         print('Getting Exodus transactions...')
         exodus = Exodus()
         exodus_transactions = exodus.get_exodus_transactions()
-        exodus_transactions = pd.to_csv(f'{self.save_path}exodus.csv', index=False)
+        exodus_transactions.to_csv(f'{self.source_transactions_save_path}exodus.csv', index=False)
         print('Got Exodus transactions!\n')
 
 
