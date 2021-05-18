@@ -21,7 +21,7 @@ class Binance:
 
         deposit_dataframes = []
         for deposit in deposits:
-            deposit_dataframes.append(Binance.create_deposit_datarame(deposit))
+            deposit_dataframes.append(Binance.create_deposit_dataframe(deposit))
 
         df_deposits = pd.concat(deposit_dataframes)
 
@@ -30,7 +30,7 @@ class Binance:
 
         withdrawal_dataframes = []
         for withdrawal in withdrawals:
-            withdrawal_dataframes.append(Binance.create_withdrawal_datarame(withdrawal))
+            withdrawal_dataframes.append(Binance.create_withdrawal_dataframe(withdrawal))
 
         df_withdrawals = pd.concat(withdrawal_dataframes)
 
@@ -62,9 +62,18 @@ class Binance:
 
         df_dust_transactions = pd.concat(dust_transactions_dataframes)
 
+        # Get dividend transactions
+        dividend_transactions = self.get_dividend_transactions()
+
+        dividend_transactions_dataframes = []
+        for d in dividend_transactions:
+            dividend_transactions_dataframes.append(Binance.create_dividend_transaction_dataframe(d))
+
+        df_dividend_transactions = pd.concat(dividend_transactions_dataframes)
+
         # df_trades = pd.read_csv(r"C:\Users\alasd\Documents\Projects Misc\binance.csv")
 
-        df_final = pd.concat([df_deposits, df_withdrawals, df_trades, df_dust_transactions])
+        df_final = pd.concat([df_deposits, df_withdrawals, df_trades, df_dust_transactions, df_dividend_transactions])
         df_final['datetime'] = pd.to_datetime(df_final['datetime'])
 
         df_final.sort_values(by='datetime', inplace=True)
@@ -392,8 +401,29 @@ class Binance:
 
         return dust_transactions
 
+    def get_dividend_transactions(self):
+        path = '/sapi/v1/asset/assetDividend'
+
+        c = BinanceAuth(self.api_key, self.api_secret)
+        headers = c.get_request_headers()
+
+        params = {
+            'recvWindow': 20000,
+            'timestamp': int(time.time() * 1000)
+        }
+
+        params['signature'] = c.get_request_signature(params)
+
+        r = requests.get(self.base_url + path, headers=headers, params=params).json()
+
+        dividend_transactions = []
+        for i in r['rows']:
+            dividend_transactions.append(i)
+
+        return dividend_transactions
+
     @staticmethod
-    def create_deposit_datarame(deposit):
+    def create_deposit_dataframe(deposit):
         tx = Transaction()
 
         tx.transaction['asset'] = deposit['asset']
@@ -423,7 +453,7 @@ class Binance:
         return pd.DataFrame(tx.transaction, index=[0])
 
     @staticmethod
-    def create_withdrawal_datarame(withdrawal):
+    def create_withdrawal_dataframe(withdrawal):
         tx = Transaction()
 
         tx.transaction['asset'] = withdrawal['asset']
@@ -510,9 +540,36 @@ class Binance:
 
         return pd.concat([df_tx_buy, df_tx_sell])
 
+    @staticmethod
+    def create_dividend_transaction_dataframe(dividend_transaction):
+        tx = Transaction()
+
+        tx.transaction['asset'] = dividend_transaction['asset']
+        tx.transaction['action'] = 'airdrop'
+        tx.transaction['disposal'] = False
+        tx.transaction['datetime'] = dt.fromtimestamp(dividend_transaction['divTime'] / 1000)
+        tx.transaction['initial_asset_quantity'] = dividend_transaction['amount']
+        tx.transaction['initial_asset_currency'] = dividend_transaction['asset']
+        tx.transaction['initial_asset_location'] = 'Binance'
+        tx.transaction['initial_asset_address'] = None
+        tx.transaction['price'] = None
+        tx.transaction['final_asset_quantity'] = dividend_transaction['amount']
+        tx.transaction['final_asset_currency'] = dividend_transaction['asset']
+        tx.transaction['final_asset_gbp'] = None
+        tx.transaction['final_asset_location'] = None
+        tx.transaction['final_asset_address'] = None
+        tx.transaction['fee_type'] = None
+        tx.transaction['fee_quantity'] = None
+        tx.transaction['fee_currency'] = None
+        tx.transaction['fee_gbp'] = None
+        tx.transaction['source_transaction_id'] = dividend_transaction['id']
+        tx.transaction['source_trade_id'] = None
+
+        return pd.DataFrame(tx.transaction, index=[0])
+
 
 if __name__ == '__main__':
     x = Binance()
     x.get_binance_transactions()
-    # x.get_symbol_trades('ONEBIDR')
+    # x.get_dividend_transactions()
 
