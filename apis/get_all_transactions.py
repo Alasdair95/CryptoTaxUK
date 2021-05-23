@@ -21,10 +21,10 @@ class GetAllTransactions:
             os.makedirs(f'{self.asset_transactions_save_path}')
 
         # Create transaction CSVs from exchanges
-        # self.create_exchange_transactions()
+        self.create_exchange_transactions()
 
         # Create transaction CSVs from wallets
-        # self.create_wallet_transactions()
+        self.create_wallet_transactions()
 
         transaction_dfs = []
 
@@ -95,6 +95,10 @@ class GetAllTransactions:
 
         for asset, transactions in asset_transaction_dfs.items():
             transactions.to_csv(f'{self.asset_transactions_save_path}{asset}.csv', index=False)
+
+        print('All done!')
+
+        return None
 
     def create_exchange_transactions(self):
         # Get Binance transactions
