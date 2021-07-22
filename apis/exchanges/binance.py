@@ -1,6 +1,7 @@
 import os
 import requests
 import time
+import json
 import pandas as pd
 from datetime import timedelta
 from datetime import datetime as dt
@@ -21,6 +22,7 @@ class Binance:
         if os.path.isfile(self.source_transactions_save_path):
             df = pd.read_csv(self.source_transactions_save_path)
             most_recent_transaction = df['datetime'].tolist()[-1]
+            df['datetime'] = pd.to_datetime(df['datetime'])
         else:
             df = pd.DataFrame(Transaction().transaction, index=[0]).dropna()
             most_recent_transaction = None
@@ -75,7 +77,6 @@ class Binance:
         count = 0
         df_trades_list = []
         for symbol in symbols:
-
             trades = self.get_symbol_trades(symbol['symbol'], start=most_recent_transaction)
             time.sleep(1)
 
@@ -84,108 +85,123 @@ class Binance:
                 print(f"{symbol['symbol']}: {len(trades)} trades")
                 for trade in trades:
                     df_trades_list.append(Binance.create_trades_dataframes(symbol, trade))
-                df_trades = pd.concat(df_trades_list)
-            else:
-                df_trades = pd.DataFrame(Transaction().transaction, index=[0]).dropna()
-
+            # else:
+            #     df_trades = pd.DataFrame(Transaction().transaction, index=[0]).dropna()
             count += 1
 
-        # df_trades = pd.read_csv(r"C:\Users\alasd\Documents\Projects Misc\binance.csv")
+        if len(df_trades_list) > 0:
+            df_trades = pd.concat(df_trades_list)
+            # df_trades = pd.read_csv(r"C:\Users\alasd\Documents\Projects Misc\binance.csv")
 
-        df_final = pd.concat([df_deposits, df_withdrawals, df_trades, df_dust_transactions, df_dividend_transactions])
-        df_final['datetime'] = pd.to_datetime(df_final['datetime'])
+            df_final = pd.concat([df_deposits, df_withdrawals, df_trades, df_dust_transactions, df_dividend_transactions])
+            df_final['datetime'] = pd.to_datetime(df_final['datetime'])
 
-        df_final.sort_values(by='datetime', inplace=True)
+            df_final.sort_values(by='datetime', inplace=True)
 
-        # GBP conversions
-        # Loop through and get GBP values where missing
-        final_asset_gbp = []
-        fee_gbp = []
-        cached_rates = {}
-        count_total = 0
-        count_api = 0
-        count_cache = 0
-        for row in df_final.itertuples():
-            # Calculate GBP value for all disposals
-            if row.action in ['exchange_fiat_for_crypto', 'exchange_crypto_for_fiat', 'exchange_crypto_for_crypto']:
-                if row.final_asset_currency == 'GBP':
-                    final_asset_gbp.append(row.final_asset_quantity)
-                else:
-                    asset = row.final_asset_currency
-                    datetime = dt.strptime(str(row.datetime), '%Y-%m-%d %H:%M:%S').strftime('%Y-%m-%d %H:%M:00')
-                    quantity = row.final_asset_quantity
+            # df_final = pd.read_csv(r"C:\Users\alasd\Documents\Projects Misc\binance_temp.csv")
 
-                    # Check whether we have already cached the GBP rate for the asset and datetime in question
-                    if row.initial_asset_currency in cached_rates.keys():
-                        if not cached_rates[row.initial_asset_currency].get(datetime):
-                            # Convert to GBP
-                            c = BinanceConvertToGBP(asset, datetime, quantity)
-                            quantity_gbp = c.convert_to_gbp()
-                            final_asset_gbp.append(quantity_gbp)
-                            # Calculate the asset GBP rate at this datetime and cache
-                            rate_gbp = round(quantity_gbp / float(row.initial_asset_quantity), 2)
-                            cached_rates[row.initial_asset_currency][datetime] = rate_gbp
-                            count_api += 1
-                        else:
-                            rate_gbp = cached_rates[row.initial_asset_currency].get(datetime)
-                            quantity_gbp = round(rate_gbp * float(row.initial_asset_quantity), 2)
-                            final_asset_gbp.append(quantity_gbp)
-                            count_cache += 1
+            # Check whether cached_rates_gbp.json exists
+            if not os.path.isfile('data/cached_gbp_rates.json'):
+                with open('data/cached_gbp_rates.json', 'w') as f:
+                    json.dump({}, f)
+
+            # Read cached crypto/gbp rates
+            with open('data/cached_gbp_rates.json') as j:
+                cached_rates = json.load(j)
+
+            # GBP conversions
+            # Loop through and get GBP values where missing
+            final_asset_gbp = []
+            fee_gbp = []
+            count_api = 0
+            count_cache = 0
+            for row in df_final.itertuples():
+                # Calculate GBP value for all disposals
+                if row.action in ['exchange_fiat_for_crypto', 'exchange_crypto_for_fiat', 'exchange_crypto_for_crypto']:
+                    if row.final_asset_currency == 'GBP':
+                        final_asset_gbp.append(row.final_asset_quantity)
                     else:
-                        c = BinanceConvertToGBP(asset, datetime, quantity)
-                        quantity_gbp = c.convert_to_gbp()
-                        final_asset_gbp.append(quantity_gbp)
-                        rate_gbp = round(quantity_gbp / float(row.initial_asset_quantity), 2)
-                        cached_rates[row.initial_asset_currency] = {}
-                        cached_rates[row.initial_asset_currency][datetime] = rate_gbp
-                        count_api += 1
-            else:
-                final_asset_gbp.append(None)
+                        asset = row.final_asset_currency
+                        datetime = dt.strptime(str(row.datetime), '%Y-%m-%d %H:%M:%S').strftime('%Y-%m-%d %H:%M:00')
+                        quantity = row.final_asset_quantity
 
-            # Calculate all fees in GBP
-            if not pd.isna(row.fee_currency):
-                if any([row.fee_currency == 'GBP', row.fee_quantity == 0.0]):
-                    fee_gbp.append(row.fee_quantity)
-                else:
-                    asset = row.fee_currency
-                    datetime = dt.strptime(str(row.datetime), '%Y-%m-%d %H:%M:%S').strftime('%Y-%m-%d %H:%M:00')
-                    quantity = row.fee_quantity
-
-                    # Check whether we have already cached the GBP rate for the asset and datetime in question
-                    if row.fee_currency in cached_rates.keys():
-                        if not cached_rates[row.fee_currency].get(datetime):
-                            # Convert to GBP
+                        # Check whether we have already cached the GBP rate for the asset and datetime in question
+                        if asset in cached_rates.keys():
+                            if not cached_rates[asset].get(datetime):
+                                # Convert to GBP
+                                c = BinanceConvertToGBP(asset, datetime, quantity)
+                                quantity_gbp = c.convert_to_gbp()
+                                final_asset_gbp.append(quantity_gbp)
+                                # Calculate the asset GBP rate at this datetime and cache
+                                rate_gbp = quantity_gbp / float(quantity)
+                                cached_rates[asset][datetime] = rate_gbp
+                                count_api += 1
+                            else:
+                                rate_gbp = cached_rates[asset].get(datetime)
+                                quantity_gbp = rate_gbp * float(quantity)
+                                final_asset_gbp.append(quantity_gbp)
+                                count_cache += 1
+                        else:
                             c = BinanceConvertToGBP(asset, datetime, quantity)
                             quantity_gbp = c.convert_to_gbp()
-                            fee_gbp.append(quantity_gbp)
-                            # Calculate the asset GBP rate at this datetime and cache
-                            rate_gbp = round(quantity_gbp / float(row.fee_quantity), 2)
+                            final_asset_gbp.append(quantity_gbp)
+                            rate_gbp = quantity_gbp / float(quantity)
+                            cached_rates[asset] = {}
                             cached_rates[asset][datetime] = rate_gbp
                             count_api += 1
-                        else:
-                            rate_gbp = cached_rates[asset].get(datetime)
-                            quantity_gbp = round(rate_gbp * float(row.fee_quantity), 2)
-                            fee_gbp.append(quantity_gbp)
-                            count_cache += 1
+                else:
+                    final_asset_gbp.append(None)
+
+                # Calculate all fees in GBP
+                if not pd.isna(row.fee_currency):
+                    if any([row.fee_currency == 'GBP', row.fee_quantity == 0.0]):
+                        fee_gbp.append(row.fee_quantity)
                     else:
-                        c = BinanceConvertToGBP(asset, datetime, quantity)
-                        quantity_gbp = c.convert_to_gbp()
-                        fee_gbp.append(quantity_gbp)
-                        rate_gbp = round(quantity_gbp / float(row.fee_quantity), 2)
-                        cached_rates[asset] = {}
-                        cached_rates[asset][datetime] = rate_gbp
-                        count_api += 1
-            else:
-                fee_gbp.append(None)
+                        asset = row.fee_currency
+                        datetime = dt.strptime(str(row.datetime), '%Y-%m-%d %H:%M:%S').strftime('%Y-%m-%d %H:%M:00')
+                        quantity = row.fee_quantity
 
-            count_total += 1
-            # print(f'{count_api} : API')
-            # print(f'{count_cache}   : Cache')
-            # print(f'{count_total}   : Total')
-            print(f'{round(100 * count_total / df_final.shape[0], 2)}% done')
+                        # Check whether we have already cached the GBP rate for the asset and datetime in question
+                        if asset in cached_rates.keys():
+                            if not cached_rates[asset].get(datetime):
+                                # Convert to GBP
+                                c = BinanceConvertToGBP(asset, datetime, quantity)
+                                quantity_gbp = c.convert_to_gbp()
+                                fee_gbp.append(quantity_gbp)
+                                # Calculate the asset GBP rate at this datetime and cache
+                                rate_gbp = quantity_gbp / float(quantity)
+                                cached_rates[asset][datetime] = rate_gbp
+                                count_api += 1
+                            else:
+                                rate_gbp = cached_rates[asset].get(datetime)
+                                quantity_gbp = rate_gbp * float(row.fee_quantity)
+                                fee_gbp.append(quantity_gbp)
+                                count_cache += 1
+                        else:
+                            c = BinanceConvertToGBP(asset, datetime, quantity)
+                            quantity_gbp = c.convert_to_gbp()
+                            fee_gbp.append(quantity_gbp)
+                            rate_gbp = quantity_gbp / float(quantity)
+                            cached_rates[asset] = {}
+                            cached_rates[asset][datetime] = rate_gbp
+                            count_api += 1
+                else:
+                    fee_gbp.append(None)
 
-        df_final['final_asset_gbp'] = final_asset_gbp
-        df_final['fee_gbp'] = fee_gbp
+                print(f'{count_api} : API')
+                print(f'{count_cache}   : Cache')
+
+            print(f'Count API:\t {count_api}')
+            print(f'Count cache:\t {count_cache}')
+
+            # Save cached_rates back to json file for quicker conversions on next run
+            with open('data/cached_gbp_rates.json', 'w', encoding='utf-8') as f:
+                json.dump(cached_rates, f, ensure_ascii=False, indent=4)
+
+            df_final['final_asset_gbp'] = final_asset_gbp
+            df_final['fee_gbp'] = fee_gbp
+        else:
+            df_final = pd.DataFrame(Transaction().transaction, index=[0]).dropna()
 
         # Add all new transactions to the existing dataframe
         df_full = pd.concat([df, df_final]).sort_values(by='datetime')
