@@ -1,4 +1,5 @@
 import os
+import json
 import pandas as pd
 from datetime import datetime as dt
 
@@ -20,9 +21,20 @@ class Exodus:
 
         df_transactions.sort_values(by='datetime', inplace=True)
 
+        # Check whether cached_rates_gbp.json exists
+        if not os.path.isfile('data/cached_gbp_rates.json'):
+            with open('data/cached_gbp_rates.json', 'w') as f:
+                json.dump({}, f)
+
+        # Read cached crypto/gbp rates
+        with open('data/cached_gbp_rates.json') as j:
+            cached_rates = json.load(j)
+
         # Loop through and get GBP values where missing
         final_asset_gbp = []
         fee_gbp = []
+        count_api = 0
+        count_cache = 0
         for row in df_transactions.itertuples():
             # Calculate GBP value for all disposals
             if row.action in ['exchange_fiat_for_crypto', 'exchange_crypto_for_fiat', 'exchange_crypto_for_crypto']:
@@ -35,13 +47,39 @@ class Exodus:
                         asset = row.final_asset_currency
                         datetime = dt.strptime(str(row.datetime), '%Y-%m-%d %H:%M:%S').strftime('%Y-%m-%d %H:%M:00')
                         quantity = row.final_asset_quantity
-                        try:
-                            c = BinanceConvertToGBP(asset, datetime, quantity)
-                            gbp_value = c.convert_to_gbp()
-                        except IndexError:
-                            c = CoinAPIConvertToGBP(asset, datetime, quantity)
-                            gbp_value = c.convert_to_gbp()
-                        final_asset_gbp.append(gbp_value)
+                        # Check whether we have already cached the GBP rate for the asset and datetime in question
+                        if asset in cached_rates.keys():
+                            if not cached_rates[asset].get(datetime):
+                                try:
+                                    c = BinanceConvertToGBP(asset, datetime, quantity)
+                                    gbp_value = c.convert_to_gbp()
+                                except IndexError:
+                                    c = CoinAPIConvertToGBP(asset, datetime, quantity)
+                                    gbp_value = c.convert_to_gbp()
+                                final_asset_gbp.append(gbp_value)
+                                if float(quantity):
+                                    rate_gbp = gbp_value / float(quantity)
+                                    cached_rates[asset] = {}
+                                    cached_rates[asset][datetime] = rate_gbp
+                                count_api += 1
+                            else:
+                                rate_gbp = cached_rates[asset].get(datetime)
+                                quantity_gbp = rate_gbp * float(quantity)
+                                final_asset_gbp.append(quantity_gbp)
+                                count_cache += 1
+                        else:
+                            try:
+                                c = BinanceConvertToGBP(asset, datetime, quantity)
+                                gbp_value = c.convert_to_gbp()
+                            except IndexError:
+                                c = CoinAPIConvertToGBP(asset, datetime, quantity)
+                                gbp_value = c.convert_to_gbp()
+                            final_asset_gbp.append(gbp_value)
+                            if float(quantity):
+                                rate_gbp = gbp_value / float(quantity)
+                                cached_rates[asset] = {}
+                                cached_rates[asset][datetime] = rate_gbp
+                            count_api += 1
                 else:
                     final_asset_gbp.append(row.final_asset_gbp)
             else:
@@ -55,15 +93,44 @@ class Exodus:
                     asset = row.fee_currency
                     datetime = dt.strptime(str(row.datetime), '%Y-%m-%d %H:%M:%S').strftime('%Y-%m-%d %H:%M:00')
                     quantity = row.fee_quantity
-                    try:
-                        c = BinanceConvertToGBP(asset, datetime, quantity)
-                        gbp_value = c.convert_to_gbp()
-                    except IndexError:
-                        c = CoinAPIConvertToGBP(asset, datetime, quantity)
-                        gbp_value = c.convert_to_gbp()
-                    fee_gbp.append(gbp_value)
+
+                    # Check whether we have already cached the GBP rate for the asset and datetime in question
+                    if asset in cached_rates.keys():
+                        if not cached_rates[asset].get(datetime):
+                            try:
+                                c = BinanceConvertToGBP(asset, datetime, quantity)
+                                gbp_value = c.convert_to_gbp()
+                            except IndexError:
+                                c = CoinAPIConvertToGBP(asset, datetime, quantity)
+                                gbp_value = c.convert_to_gbp()
+                            fee_gbp.append(gbp_value)
+                            if float(quantity):
+                                rate_gbp = gbp_value / float(quantity)
+                                cached_rates[asset][datetime] = rate_gbp
+                            count_api += 1
+                        else:
+                            rate_gbp = cached_rates[asset].get(datetime)
+                            quantity_gbp = rate_gbp * float(quantity)
+                            fee_gbp.append(quantity_gbp)
+                            count_cache += 1
+                    else:
+                        try:
+                            c = BinanceConvertToGBP(asset, datetime, quantity)
+                            gbp_value = c.convert_to_gbp()
+                        except IndexError:
+                            c = CoinAPIConvertToGBP(asset, datetime, quantity)
+                            gbp_value = c.convert_to_gbp()
+                        fee_gbp.append(gbp_value)
+                        if float(quantity):
+                            rate_gbp = gbp_value / float(quantity)
+                            cached_rates[asset] = {}
+                            cached_rates[asset][datetime] = rate_gbp
+                        count_api += 1
             else:
                 fee_gbp.append(None)
+
+        print(f'Count API:\t {count_api}')
+        print(f'Count cache:\t {count_cache}')
 
         df_transactions['final_asset_gbp'] = final_asset_gbp
         df_transactions['fee_gbp'] = fee_gbp

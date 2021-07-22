@@ -1,6 +1,10 @@
 import os
 import requests
 from datetime import datetime, timedelta
+import mt4_hst
+from io import BytesIO
+import pandas as pd
+from zipfile import ZipFile
 
 from apis.authentication import CoinbaseProAuth
 
@@ -41,22 +45,26 @@ class CoinbaseConvertToGBP:
         self.api_secret = os.environ.get('COINBASE_PRO_API_SECRET')
         self.passphrase = os.environ.get('COINBASE_PRO_API_PASSPHRASE')
         self.base_url = 'https://api.pro.coinbase.com/'
+        self.forex_downloads = 'data/forex/'
 
     def convert_to_gbp(self):
+        if not os.path.exists(f'{self.forex_downloads}'):
+            os.makedirs(f'{self.forex_downloads}')
+
         if self.asset == 'GBP':
             pass
         # elif self.asset == 'EUR':
         #     return round(self.quantity * self.get_historical_fiat_gbp_price(base='EUR'), 2)
         elif self.asset == 'BTC':
-            quantity_usd = round(self.quantity * self.get_historical_btc_usd_price(), 2)
-            return round(quantity_usd * self.get_historical_fiat_gbp_price(), 2)
+            quantity_usd = self.quantity * self.get_historical_btc_usd_price()
+            return quantity_usd * self.get_historical_fiat_gbp_price()
         elif self.asset in ['EUR', 'USD']:
-            return round(self.quantity * self.get_historical_fiat_gbp_price(base=self.asset), 2)
+            return self.quantity * self.get_historical_fiat_gbp_price(base=self.asset)
         else:
             quantity_btc = round(self.quantity * self.get_historical_crypto_btc_price(), 8)
             # Must first convert to USD because most exchanges only have recent GBP prices but will have historical USD
-            quantity_usd = round(quantity_btc * self.get_historical_btc_usd_price(), 2)
-            return round(quantity_usd * self.get_historical_fiat_gbp_price(), 2)
+            quantity_usd = quantity_btc * self.get_historical_btc_usd_price()
+            return quantity_usd * self.get_historical_fiat_gbp_price()
 
     def get_historical_crypto_btc_price(self):
         start = self.dt
@@ -86,15 +94,71 @@ class CoinbaseConvertToGBP:
         return r[0][4]
 
     def get_historical_fiat_gbp_price(self, base='USD'):
-        url = f'https://api.ratesapi.io/api/{self.dt.split(" ")[0]}?base={base}&symbols={base},GBP'
-        r = requests.get(url)
-        if r.status_code == 200:
-            return r.json()['rates']['GBP']
+        if base == 'USDT':
+            base = 'USD'
+
+        # These datasets appear to be updated weekly
+        download_urls = {
+            'EUR': (0, 'https://tools.fxdd.com/tools/M1Data/EURGBP.zip'),
+            'USD': (1, 'https://tools.fxdd.com/tools/M1Data/GBPUSD.zip')
+        }
+
+        if download_urls.get(base)[0]:
+            file = 'GBP' + base
         else:
-            url = f'https://api.ratesapi.io/api/{self.dt.split(" ")[0]}?base=USD&symbols={base},GBP'
+            file = base + 'GBP'
+
+        # Check whether or not the csv already exists
+        if file + '.csv' in os.listdir(self.forex_downloads):
+            df = pd.read_csv(self.forex_downloads + file + '.csv')
+        else:
+            # Check whether the hst download already exists
+            if file + '.hst' not in os.listdir(self.forex_downloads):
+                r = requests.get(download_urls.get(base)[1])
+                z = ZipFile(BytesIO(r.content))
+                z.extractall(self.forex_downloads)
+
+            df = mt4_hst.read_hst(self.forex_downloads + file + '.hst')
+
+            # Get latest date in the dataframe
+            if datetime.strptime(self.dt, '%Y-%m-%d %H:%M:%S') > df.tail(2)['time'].tolist()[0]:
+                r = requests.get(download_urls.get(base)[1])
+                z = ZipFile(BytesIO(r.content))
+                z.extractall(self.forex_downloads)
+
+            df = mt4_hst.read_hst(self.forex_downloads + file + '.hst')
+
+            # Drop columns we don't need
+            df.drop(['open', 'high', 'low', 'volume'], axis=1, inplace=True)
+
+            start_idx = df.loc[df['time'] == '2017-11-01 00:00:00'].index.values[0]
+
+            df = df.iloc[start_idx:]
+
+            df['time'] = pd.to_datetime(df['time'])
+            df.set_index('time', inplace=True)
+            idx = pd.date_range(df.index.min(), df.index.max(), freq='1Min')
+            df = df.reindex(idx)
+            df.fillna(method='ffill', inplace=True)
+            df.reset_index(inplace=True)
+
+            df.to_csv(self.forex_downloads + file + '.csv', index=False)
+
+        try:
+            if download_urls.get(base)[0]:
+                return 1 / df.loc[df['index'] == self.dt]['close'].tolist()[0]
+            else:
+                return df.loc[df['index'] == self.dt]['close'].tolist()[0]
+        except IndexError:  # Most recent exchange rates have not yet been added to the data source
+            url = f'https://api.ratesapi.io/api/{self.dt.split(" ")[0]}?base={base}&symbols={base},GBP'
             r = requests.get(url)
             if r.status_code == 200:
-                return r.json()['rates']['GBP'] / r.json()['rates'][base]
+                return r.json()['rates']['GBP']
+            else:
+                url = f'https://api.ratesapi.io/api/{self.dt.split(" ")[0]}?base=USD&symbols={base},GBP'
+                r = requests.get(url)
+                if r.status_code == 200:
+                    return r.json()['rates']['GBP'] / r.json()['rates'][base]
 
 
 class BinanceConvertToGBP:
@@ -103,22 +167,27 @@ class BinanceConvertToGBP:
         self.dt = dt
         self.quantity = float(quantity)
         self.base_url = 'https://api.binance.com'
+        self.forex_downloads = 'data/forex/'
+        self.rates_api_access_key = os.environ.get('RATES_API_ACCESS_KEY')
 
     def convert_to_gbp(self):
+        if not os.path.exists(f'{self.forex_downloads}'):
+            os.makedirs(f'{self.forex_downloads}')
+
         if self.asset == 'GBP':
             pass
         elif self.asset == 'BTC':
-            quantity_usd = round(self.quantity * self.get_historical_btc_usd_price(), 2)
-            quantity_gbp = round(quantity_usd * self.get_historical_fiat_gbp_price(), 2)
+            quantity_usd = self.quantity * self.get_historical_btc_usd_price()
+            quantity_gbp = quantity_usd * self.get_historical_fiat_gbp_price()
             return quantity_gbp
         elif self.asset in ['EUR', 'USD', 'USDT']:
-            quantity_gbp = round(self.quantity * self.get_historical_fiat_gbp_price(base=self.asset), 2)
+            quantity_gbp = self.quantity * self.get_historical_fiat_gbp_price(base=self.asset)
             return quantity_gbp
         else:
             quantity_btc = round(self.quantity * self.get_historical_crypto_btc_price(), 8)
             # Must first convert to USD because most exchanges only have recent GBP prices but will have historical USD
-            quantity_usd = round(quantity_btc * self.get_historical_btc_usd_price(), 2)
-            quantity_gbp = round(quantity_usd * self.get_historical_fiat_gbp_price(), 2)
+            quantity_usd = quantity_btc * self.get_historical_btc_usd_price()
+            quantity_gbp = quantity_usd * self.get_historical_fiat_gbp_price()
             return quantity_gbp
 
     def get_historical_crypto_btc_price(self):
@@ -162,15 +231,68 @@ class BinanceConvertToGBP:
         if base == 'USDT':
             base = 'USD'
 
-        url = f'https://api.ratesapi.io/api/{self.dt.split(" ")[0]}?base={base}&symbols={base},GBP'
-        r = requests.get(url)
-        if r.status_code == 200:
-            return r.json()['rates']['GBP']
+        # These datasets appear to be updated weekly
+        download_urls = {
+            'EUR': (0, 'https://tools.fxdd.com/tools/M1Data/EURGBP.zip'),
+            'USD': (1, 'https://tools.fxdd.com/tools/M1Data/GBPUSD.zip')
+        }
+
+        if download_urls.get(base)[0]:
+            file = 'GBP' + base
         else:
-            url = f'https://api.ratesapi.io/api/{self.dt.split(" ")[0]}?base=USD&symbols={base},GBP'
+            file = base + 'GBP'
+
+        # Check whether or not the csv already exists
+        if file + '.csv' in os.listdir(self.forex_downloads):
+            df = pd.read_csv(self.forex_downloads + file + '.csv')
+        else:
+            # Check whether the hst download already exists
+            if file + '.hst' not in os.listdir(self.forex_downloads):
+                r = requests.get(download_urls.get(base)[1])
+                z = ZipFile(BytesIO(r.content))
+                z.extractall(self.forex_downloads)
+
+            df = mt4_hst.read_hst(self.forex_downloads + file + '.hst')
+
+            # Get latest date in the dataframe
+            if datetime.strptime(self.dt, '%Y-%m-%d %H:%M:%S') > df.tail(2)['time'].tolist()[0]:
+                r = requests.get(download_urls.get(base)[1])
+                z = ZipFile(BytesIO(r.content))
+                z.extractall(self.forex_downloads)
+
+            df = mt4_hst.read_hst(self.forex_downloads + file + '.hst')
+
+            # Drop columns we don't need
+            df.drop(['open', 'high', 'low', 'volume'], axis=1, inplace=True)
+
+            start_idx = df.loc[df['time'] == '2017-11-01 00:00:00'].index.values[0]
+
+            df = df.iloc[start_idx:]
+
+            df['time'] = pd.to_datetime(df['time'])
+            df.set_index('time', inplace=True)
+            idx = pd.date_range(df.index.min(), df.index.max(), freq='1Min')
+            df = df.reindex(idx)
+            df.fillna(method='ffill', inplace=True)
+            df.reset_index(inplace=True)
+
+            df.to_csv(self.forex_downloads + file + '.csv', index=False)
+
+        try:
+            if download_urls.get(base)[0]:
+                return 1 / df.loc[df['index'] == self.dt]['close'].tolist()[0]
+            else:
+                return df.loc[df['index'] == self.dt]['close'].tolist()[0]
+        except IndexError:  # Most recent exchange rates have not yet been added to the data source
+            url = f'http://api.exchangeratesapi.io/v1/{self.dt.split(" ")[0]}?symbols={base},GBP&access_key={self.rates_api_access_key}'
             r = requests.get(url)
             if r.status_code == 200:
-                return r.json()['rates']['GBP'] / r.json()['rates'][base]
+                return r.json()['rates']['GBP']
+            else:
+                url = f'http://api.exchangeratesapi.io/v1/{self.dt.split(" ")[0]}?symbols={base},GBP&access_key={self.rates_api_access_key}'
+                r = requests.get(url)
+                if r.status_code == 200:
+                    return r.json()['rates']['GBP']
 
 
 class CoinAPIConvertToGBP:
@@ -180,10 +302,14 @@ class CoinAPIConvertToGBP:
         self.quantity = float(quantity)
         self.coin_api_key = os.environ.get('COIN_API_KEY')
         self.base_url = 'https://rest.coinapi.io'
+        self.forex_downloads = 'data/forex/'
 
     def convert_to_gbp(self):
-        quantity_usd = round(self.quantity * self.get_historical_btc_usd_price(), 2)
-        quantity_gbp = round(quantity_usd * self.get_historical_fiat_gbp_price(), 2)
+        if not os.path.exists(f'{self.forex_downloads}'):
+            os.makedirs(f'{self.forex_downloads}')
+
+        quantity_usd = self.quantity * self.get_historical_btc_usd_price()
+        quantity_gbp = quantity_usd * self.get_historical_fiat_gbp_price()
 
         return quantity_gbp
 
@@ -210,18 +336,71 @@ class CoinAPIConvertToGBP:
         if base == 'USDT':
             base = 'USD'
 
-        url = f'https://api.ratesapi.io/api/{self.dt.split(" ")[0]}?base={base}&symbols={base},GBP'
-        r = requests.get(url)
-        if r.status_code == 200:
-            return r.json()['rates']['GBP']
+        # These datasets appear to be updated weekly
+        download_urls = {
+            'EUR': (0, 'https://tools.fxdd.com/tools/M1Data/EURGBP.zip'),
+            'USD': (1, 'https://tools.fxdd.com/tools/M1Data/GBPUSD.zip')
+        }
+
+        if download_urls.get(base)[0]:
+            file = 'GBP' + base
         else:
-            url = f'https://api.ratesapi.io/api/{self.dt.split(" ")[0]}?base=USD&symbols={base},GBP'
+            file = base + 'GBP'
+
+        # Check whether or not the csv already exists
+        if file + '.csv' in os.listdir(self.forex_downloads):
+            df = pd.read_csv(self.forex_downloads + file + '.csv')
+        else:
+            # Check whether the hst download already exists
+            if file + '.hst' not in os.listdir(self.forex_downloads):
+                r = requests.get(download_urls.get(base)[1])
+                z = ZipFile(BytesIO(r.content))
+                z.extractall(self.forex_downloads)
+
+            df = mt4_hst.read_hst(self.forex_downloads + file + '.hst')
+
+            # Get latest date in the dataframe
+            if datetime.strptime(self.dt, '%Y-%m-%d %H:%M:%S') > df.tail(2)['time'].tolist()[0]:
+                r = requests.get(download_urls.get(base)[1])
+                z = ZipFile(BytesIO(r.content))
+                z.extractall(self.forex_downloads)
+
+            df = mt4_hst.read_hst(self.forex_downloads + file + '.hst')
+
+            # Drop columns we don't need
+            df.drop(['open', 'high', 'low', 'volume'], axis=1, inplace=True)
+
+            start_idx = df.loc[df['time'] == '2017-11-01 00:00:00'].index.values[0]
+
+            df = df.iloc[start_idx:]
+
+            df['time'] = pd.to_datetime(df['time'])
+            df.set_index('time', inplace=True)
+            idx = pd.date_range(df.index.min(), df.index.max(), freq='1Min')
+            df = df.reindex(idx)
+            df.fillna(method='ffill', inplace=True)
+            df.reset_index(inplace=True)
+
+            df.to_csv(self.forex_downloads + file + '.csv', index=False)
+
+        try:
+            if download_urls.get(base)[0]:
+                return 1 / df.loc[df['index'] == self.dt]['close'].tolist()[0]
+            else:
+                return df.loc[df['index'] == self.dt]['close'].tolist()[0]
+        except IndexError:  # Most recent exchange rates have not yet been added to the data source
+            url = f'https://api.ratesapi.io/api/{self.dt.split(" ")[0]}?base={base}&symbols={base},GBP'
             r = requests.get(url)
             if r.status_code == 200:
-                return r.json()['rates']['GBP'] / r.json()['rates'][base]
+                return r.json()['rates']['GBP']
+            else:
+                url = f'https://api.ratesapi.io/api/{self.dt.split(" ")[0]}?base=USD&symbols={base},GBP'
+                r = requests.get(url)
+                if r.status_code == 200:
+                    return r.json()['rates']['GBP'] / r.json()['rates'][base]
 
 
 if __name__ == '__main__':
-    x = CoinAPIConvertToGBP('BCH', '2017-12-11 10:36:00', 0.00475456)
-    x.convert_to_gbp()
-    # x.get_historical_btc_usd_price()
+    x = BinanceConvertToGBP('USD', '2021-07-20 19:45:00', 49.7)
+    # x.convert_to_gbp()
+    x.get_historical_fiat_gbp_price()

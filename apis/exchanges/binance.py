@@ -1,6 +1,7 @@
 import os
 import requests
 import time
+import json
 import pandas as pd
 from datetime import timedelta
 from datetime import datetime as dt
@@ -14,25 +15,61 @@ class Binance:
         self.api_key = os.environ.get('BINANCE_API_KEY')
         self.api_secret = os.environ.get('BINANCE_API_SECRET')
         self.base_url = 'https://api.binance.com'
+        self.source_transactions_save_path = 'data/source_transactions/binance.csv'
 
     def get_binance_transactions(self):
+        # Get existing transactions dataframe if it exists
+        if os.path.isfile(self.source_transactions_save_path):
+            df = pd.read_csv(self.source_transactions_save_path)
+            most_recent_transaction = df['datetime'].tolist()[-1]
+            df['datetime'] = pd.to_datetime(df['datetime'])
+        else:
+            df = pd.DataFrame(Transaction().transaction, index=[0]).dropna()
+            most_recent_transaction = None
+
         # Get deposits
-        deposits = self.get_deposits()
+        deposits = self.get_deposits(start=most_recent_transaction)
 
         deposit_dataframes = []
-        for deposit in deposits:
-            deposit_dataframes.append(Binance.create_deposit_datarame(deposit))
-
-        df_deposits = pd.concat(deposit_dataframes)
+        if len(deposits) > 0:
+            for deposit in deposits:
+                deposit_dataframes.append(Binance.create_deposit_dataframe(deposit))
+            df_deposits = pd.concat(deposit_dataframes)
+        else:
+            df_deposits = pd.DataFrame(Transaction().transaction, index=[0]).dropna()
 
         # Get withdrawals
-        withdrawals = self.get_withdrawals()
+        withdrawals = self.get_withdrawals(start=most_recent_transaction)
 
         withdrawal_dataframes = []
-        for withdrawal in withdrawals:
-            withdrawal_dataframes.append(Binance.create_withdrawal_datarame(withdrawal))
+        if len(withdrawals) > 0:
+            for withdrawal in withdrawals:
+                withdrawal_dataframes.append(Binance.create_withdrawal_dataframe(withdrawal))
+            df_withdrawals = pd.concat(withdrawal_dataframes)
+        else:
+            df_withdrawals = pd.DataFrame(Transaction().transaction, index=[0]).dropna()
 
-        df_withdrawals = pd.concat(withdrawal_dataframes)
+        # Get dust transactions
+        dust_transactions = self.get_dust_transactions(start=most_recent_transaction)
+
+        dust_transactions_dataframes = []
+        if len(dust_transactions) > 0:
+            for d in dust_transactions:
+                dust_transactions_dataframes.append(Binance.create_dust_transaction_dataframe(d))
+            df_dust_transactions = pd.concat(dust_transactions_dataframes)
+        else:
+            df_dust_transactions = pd.DataFrame(Transaction().transaction, index=[0]).dropna()
+
+        # Get dividend transactions
+        dividend_transactions = self.get_dividend_transactions(start=most_recent_transaction)
+
+        dividend_transactions_dataframes = []
+        if len(dividend_transactions):
+            for d in dividend_transactions:
+                dividend_transactions_dataframes.append(Binance.create_dividend_transaction_dataframe(d))
+            df_dividend_transactions = pd.concat(dividend_transactions_dataframes)
+        else:
+            df_dividend_transactions = pd.DataFrame(Transaction().transaction, index=[0]).dropna()
 
         # Get trades
         symbols = self.get_symbols()
@@ -40,7 +77,7 @@ class Binance:
         count = 0
         df_trades_list = []
         for symbol in symbols:
-            trades = self.get_symbol_trades(symbol['symbol'])
+            trades = self.get_symbol_trades(symbol['symbol'], start=most_recent_transaction)
             time.sleep(1)
 
             if len(trades) > 0:
@@ -48,118 +85,128 @@ class Binance:
                 print(f"{symbol['symbol']}: {len(trades)} trades")
                 for trade in trades:
                     df_trades_list.append(Binance.create_trades_dataframes(symbol, trade))
-
+            # else:
+            #     df_trades = pd.DataFrame(Transaction().transaction, index=[0]).dropna()
             count += 1
 
-        df_trades = pd.concat(df_trades_list)
+        if len(df_trades_list) > 0:
+            df_trades = pd.concat(df_trades_list)
+            # df_trades = pd.read_csv(r"C:\Users\alasd\Documents\Projects Misc\binance.csv")
 
-        # Get dust transactions
-        dust_transactions = self.get_dust_transactions()
+            df_final = pd.concat([df_deposits, df_withdrawals, df_trades, df_dust_transactions, df_dividend_transactions])
+            df_final['datetime'] = pd.to_datetime(df_final['datetime'])
 
-        dust_transactions_dataframes = []
-        for d in dust_transactions:
-            dust_transactions_dataframes.append(Binance.create_dust_transaction_dataframe(d))
+            df_final.sort_values(by='datetime', inplace=True)
 
-        df_dust_transactions = pd.concat(dust_transactions_dataframes)
+            # df_final = pd.read_csv(r"C:\Users\alasd\Documents\Projects Misc\binance_temp.csv")
 
-        # df_trades = pd.read_csv(r"C:\Users\alasd\Documents\Projects Misc\binance.csv")
+            # Check whether cached_rates_gbp.json exists
+            if not os.path.isfile('data/cached_gbp_rates.json'):
+                with open('data/cached_gbp_rates.json', 'w') as f:
+                    json.dump({}, f)
 
-        df_final = pd.concat([df_deposits, df_withdrawals, df_trades, df_dust_transactions])
-        df_final['datetime'] = pd.to_datetime(df_final['datetime'])
+            # Read cached crypto/gbp rates
+            with open('data/cached_gbp_rates.json') as j:
+                cached_rates = json.load(j)
 
-        df_final.sort_values(by='datetime', inplace=True)
-
-        # GBP conversions
-        # Loop through and get GBP values where missing
-        final_asset_gbp = []
-        fee_gbp = []
-        cached_rates = {}
-        count_total = 0
-        count_api = 0
-        count_cache = 0
-        for row in df_final.itertuples():
-            # Calculate GBP value for all disposals
-            if row.action in ['exchange_fiat_for_crypto', 'exchange_crypto_for_fiat', 'exchange_crypto_for_crypto']:
-                if row.final_asset_currency == 'GBP':
-                    final_asset_gbp.append(row.final_asset_quantity)
-                else:
-                    asset = row.final_asset_currency
-                    datetime = dt.strptime(str(row.datetime), '%Y-%m-%d %H:%M:%S').strftime('%Y-%m-%d %H:%M:00')
-                    quantity = row.final_asset_quantity
-
-                    # Check whether we have already cached the GBP rate for the asset and datetime in question
-                    if row.initial_asset_currency in cached_rates.keys():
-                        if not cached_rates[row.initial_asset_currency].get(datetime):
-                            # Convert to GBP
-                            c = BinanceConvertToGBP(asset, datetime, quantity)
-                            quantity_gbp = c.convert_to_gbp()
-                            final_asset_gbp.append(quantity_gbp)
-                            # Calculate the asset GBP rate at this datetime and cache
-                            rate_gbp = round(quantity_gbp / float(row.initial_asset_quantity), 2)
-                            cached_rates[row.initial_asset_currency][datetime] = rate_gbp
-                            count_api += 1
-                        else:
-                            rate_gbp = cached_rates[row.initial_asset_currency].get(datetime)
-                            quantity_gbp = round(rate_gbp * float(row.initial_asset_quantity), 2)
-                            final_asset_gbp.append(quantity_gbp)
-                            count_cache += 1
+            # GBP conversions
+            # Loop through and get GBP values where missing
+            final_asset_gbp = []
+            fee_gbp = []
+            count_api = 0
+            count_cache = 0
+            for row in df_final.itertuples():
+                # Calculate GBP value for all disposals
+                if row.action in ['exchange_fiat_for_crypto', 'exchange_crypto_for_fiat', 'exchange_crypto_for_crypto']:
+                    if row.final_asset_currency == 'GBP':
+                        final_asset_gbp.append(row.final_asset_quantity)
                     else:
-                        c = BinanceConvertToGBP(asset, datetime, quantity)
-                        quantity_gbp = c.convert_to_gbp()
-                        final_asset_gbp.append(quantity_gbp)
-                        rate_gbp = round(quantity_gbp / float(row.initial_asset_quantity), 2)
-                        cached_rates[row.initial_asset_currency] = {}
-                        cached_rates[row.initial_asset_currency][datetime] = rate_gbp
-                        count_api += 1
-            else:
-                final_asset_gbp.append(None)
+                        asset = row.final_asset_currency
+                        datetime = dt.strptime(str(row.datetime), '%Y-%m-%d %H:%M:%S').strftime('%Y-%m-%d %H:%M:00')
+                        quantity = row.final_asset_quantity
 
-            # Calculate all fees in GBP
-            if not pd.isna(row.fee_currency):
-                if any([row.fee_currency == 'GBP', row.fee_quantity == 0.0]):
-                    fee_gbp.append(row.fee_quantity)
-                else:
-                    asset = row.fee_currency
-                    datetime = dt.strptime(str(row.datetime), '%Y-%m-%d %H:%M:%S').strftime('%Y-%m-%d %H:%M:00')
-                    quantity = row.fee_quantity
-
-                    # Check whether we have already cached the GBP rate for the asset and datetime in question
-                    if row.fee_currency in cached_rates.keys():
-                        if not cached_rates[row.fee_currency].get(datetime):
-                            # Convert to GBP
+                        # Check whether we have already cached the GBP rate for the asset and datetime in question
+                        if asset in cached_rates.keys():
+                            if not cached_rates[asset].get(datetime):
+                                # Convert to GBP
+                                c = BinanceConvertToGBP(asset, datetime, quantity)
+                                quantity_gbp = c.convert_to_gbp()
+                                final_asset_gbp.append(quantity_gbp)
+                                # Calculate the asset GBP rate at this datetime and cache
+                                rate_gbp = quantity_gbp / float(quantity)
+                                cached_rates[asset][datetime] = rate_gbp
+                                count_api += 1
+                            else:
+                                rate_gbp = cached_rates[asset].get(datetime)
+                                quantity_gbp = rate_gbp * float(quantity)
+                                final_asset_gbp.append(quantity_gbp)
+                                count_cache += 1
+                        else:
                             c = BinanceConvertToGBP(asset, datetime, quantity)
                             quantity_gbp = c.convert_to_gbp()
-                            fee_gbp.append(quantity_gbp)
-                            # Calculate the asset GBP rate at this datetime and cache
-                            rate_gbp = round(quantity_gbp / float(row.fee_quantity), 2)
+                            final_asset_gbp.append(quantity_gbp)
+                            rate_gbp = quantity_gbp / float(quantity)
+                            cached_rates[asset] = {}
                             cached_rates[asset][datetime] = rate_gbp
                             count_api += 1
-                        else:
-                            rate_gbp = cached_rates[asset].get(datetime)
-                            quantity_gbp = round(rate_gbp * float(row.fee_quantity), 2)
-                            fee_gbp.append(quantity_gbp)
-                            count_cache += 1
+                else:
+                    final_asset_gbp.append(None)
+
+                # Calculate all fees in GBP
+                if not pd.isna(row.fee_currency):
+                    if any([row.fee_currency == 'GBP', row.fee_quantity == 0.0]):
+                        fee_gbp.append(row.fee_quantity)
                     else:
-                        c = BinanceConvertToGBP(asset, datetime, quantity)
-                        quantity_gbp = c.convert_to_gbp()
-                        fee_gbp.append(quantity_gbp)
-                        rate_gbp = round(quantity_gbp / float(row.fee_quantity), 2)
-                        cached_rates[asset] = {}
-                        cached_rates[asset][datetime] = rate_gbp
-                        count_api += 1
-            else:
-                fee_gbp.append(None)
+                        asset = row.fee_currency
+                        datetime = dt.strptime(str(row.datetime), '%Y-%m-%d %H:%M:%S').strftime('%Y-%m-%d %H:%M:00')
+                        quantity = row.fee_quantity
 
-            count_total += 1
-            # print(f'{count_api} : API')
-            # print(f'{count_cache}   : Cache')
-            # print(f'{count_total}   : Total')
-            print(f'{round(100 * count_total / df_final.shape[0], 2)}% done')
+                        # Check whether we have already cached the GBP rate for the asset and datetime in question
+                        if asset in cached_rates.keys():
+                            if not cached_rates[asset].get(datetime):
+                                # Convert to GBP
+                                c = BinanceConvertToGBP(asset, datetime, quantity)
+                                quantity_gbp = c.convert_to_gbp()
+                                fee_gbp.append(quantity_gbp)
+                                # Calculate the asset GBP rate at this datetime and cache
+                                rate_gbp = quantity_gbp / float(quantity)
+                                cached_rates[asset][datetime] = rate_gbp
+                                count_api += 1
+                            else:
+                                rate_gbp = cached_rates[asset].get(datetime)
+                                quantity_gbp = rate_gbp * float(row.fee_quantity)
+                                fee_gbp.append(quantity_gbp)
+                                count_cache += 1
+                        else:
+                            c = BinanceConvertToGBP(asset, datetime, quantity)
+                            quantity_gbp = c.convert_to_gbp()
+                            fee_gbp.append(quantity_gbp)
+                            rate_gbp = quantity_gbp / float(quantity)
+                            cached_rates[asset] = {}
+                            cached_rates[asset][datetime] = rate_gbp
+                            count_api += 1
+                else:
+                    fee_gbp.append(None)
 
-        df_final['final_asset_gbp'] = final_asset_gbp
-        df_final['fee_gbp'] = fee_gbp
+                print(f'{count_api} : API')
+                print(f'{count_cache}   : Cache')
 
-        return df_final
+            print(f'Count API:\t {count_api}')
+            print(f'Count cache:\t {count_cache}')
+
+            # Save cached_rates back to json file for quicker conversions on next run
+            with open('data/cached_gbp_rates.json', 'w', encoding='utf-8') as f:
+                json.dump(cached_rates, f, ensure_ascii=False, indent=4)
+
+            df_final['final_asset_gbp'] = final_asset_gbp
+            df_final['fee_gbp'] = fee_gbp
+        else:
+            df_final = pd.DataFrame(Transaction().transaction, index=[0]).dropna()
+
+        # Add all new transactions to the existing dataframe
+        df_full = pd.concat([df, df_final]).sort_values(by='datetime')
+
+        return df_full
 
     def get_symbols(self):
         path = '/api/v3/exchangeInfo'
@@ -168,14 +215,20 @@ class Binance:
 
         return r['symbols']
 
-    def get_symbol_trades(self, symbol):
+    def get_symbol_trades(self, symbol, start=None):
         path = '/api/v3/myTrades'
+
+        if not start:
+            initial_timestamp = int(dt.timestamp(dt.strptime('2017-11-01', '%Y-%m-%d')))
+        else:
+            initial_timestamp = int(dt.timestamp(dt.strptime(start, '%Y-%m-%d %H:%M:%S')))
 
         c = BinanceAuth(self.api_key, self.api_secret)
         headers = c.get_request_headers()
 
         params = {
             'symbol': symbol,
+            'limit': 1000,
             'recvWindow': 20000,
             'timestamp': int(time.time() * 1000)
         }
@@ -183,6 +236,11 @@ class Binance:
         params['signature'] = c.get_request_signature(params)
 
         r = requests.get(self.base_url + path, headers=headers, params=params).json()
+
+        if type(r) == list:  # TODO: while loop?
+            if len(r) == params['limit']:
+                # TODO: add pagination logic using params.fromId
+                pass
 
         # If we get a bad response because we're hitting the API too much, wait 30s before trying again
         if type(r) != list:  # TODO: Change to while loop
@@ -200,7 +258,14 @@ class Binance:
 
             r = requests.get(self.base_url + path, headers=headers, params=params).json()
 
-        return r
+        symbol_trades = []
+        if type(r) == list:
+            if len(r) > 0:
+                for i in r:
+                    if i['time'] > (1000 * initial_timestamp):
+                        symbol_trades.append(i)
+
+        return symbol_trades
 
     @staticmethod
     def get_action(symbol, trade_action):
@@ -308,14 +373,20 @@ class Binance:
 
         return pd.concat([df_tx_buy, df_tx_sell])
 
-    def get_deposits(self):
+    def get_deposits(self, start=None):
         path = '/wapi/v3/depositHistory.html'
 
-        start_timestamp = int(dt.timestamp(dt.strptime('2017-11-01', '%Y-%m-%d')))
-        end_timestamp = int(dt.timestamp(dt.strptime('2017-11-01', '%Y-%m-%d') + timedelta(days=90)))
+        if not start:
+            initial_timestamp = int(dt.timestamp(dt.strptime('2017-11-01', '%Y-%m-%d')))
+            start_timestamp = int(dt.timestamp(dt.strptime('2017-11-01', '%Y-%m-%d')))
+            end_timestamp = int(dt.timestamp(dt.strptime('2017-11-01', '%Y-%m-%d') + timedelta(days=90)))
+        else:
+            initial_timestamp = int(dt.timestamp(dt.strptime(start, '%Y-%m-%d %H:%M:%S')))
+            start_timestamp = int(dt.timestamp(dt.strptime(start, '%Y-%m-%d %H:%M:%S')))
+            end_timestamp = int(dt.timestamp(dt.strptime(start, '%Y-%m-%d %H:%M:%S') + timedelta(days=90)))
 
         deposits = []
-        while end_timestamp < dt.timestamp(dt.now()):
+        while start_timestamp < dt.timestamp(dt.now()):
             c = BinanceAuth(self.api_key, self.api_secret)
             headers = c.get_request_headers()
 
@@ -332,21 +403,28 @@ class Binance:
 
             if len(r['depositList']) > 0:
                 for deposit in r['depositList']:
-                    deposits.append(deposit)
+                    if deposit['insertTime'] > (1000*initial_timestamp):
+                        deposits.append(deposit)
 
             start_timestamp = end_timestamp
             end_timestamp = end_timestamp + 7776000
 
         return deposits
 
-    def get_withdrawals(self):
+    def get_withdrawals(self, start=None):
         path = '/wapi/v3/withdrawHistory.html'
 
-        start_timestamp = int(dt.timestamp(dt.strptime('2017-11-01', '%Y-%m-%d')))
-        end_timestamp = int(dt.timestamp(dt.strptime('2017-11-01', '%Y-%m-%d') + timedelta(days=90)))
+        if not start:
+            initial_timestamp = int(dt.timestamp(dt.strptime('2017-11-01', '%Y-%m-%d')))
+            start_timestamp = int(dt.timestamp(dt.strptime('2017-11-01', '%Y-%m-%d')))
+            end_timestamp = int(dt.timestamp(dt.strptime('2017-11-01', '%Y-%m-%d') + timedelta(days=90)))
+        else:
+            initial_timestamp = int(dt.timestamp(dt.strptime(start, '%Y-%m-%d %H:%M:%S')))
+            start_timestamp = int(dt.timestamp(dt.strptime(start, '%Y-%m-%d %H:%M:%S')))
+            end_timestamp = int(dt.timestamp(dt.strptime(start, '%Y-%m-%d %H:%M:%S') + timedelta(days=90)))
 
         withdrawals = []
-        while end_timestamp < dt.timestamp(dt.now()):
+        while start_timestamp < dt.timestamp(dt.now()):
             c = BinanceAuth(self.api_key, self.api_secret)
             headers = c.get_request_headers()
 
@@ -363,15 +441,21 @@ class Binance:
 
             if len(r['withdrawList']) > 0:
                 for withdrawal in r['withdrawList']:
-                    withdrawals.append(withdrawal)
+                    if withdrawal['applyTime'] > (1000*initial_timestamp):
+                        withdrawals.append(withdrawal)
 
             start_timestamp = end_timestamp
             end_timestamp = end_timestamp + 7776000
 
         return withdrawals
 
-    def get_dust_transactions(self):
+    def get_dust_transactions(self, start=None):
         path = '/wapi/v3/userAssetDribbletLog.html'
+
+        if not start:
+            start_timestamp = dt.strptime('2017-11-01', '%Y-%m-%d')
+        else:
+            start_timestamp = dt.strptime(start, '%Y-%m-%d %H:%M:%S')
 
         c = BinanceAuth(self.api_key, self.api_secret)
         headers = c.get_request_headers()
@@ -388,12 +472,45 @@ class Binance:
         dust_transactions = []
         for i in r['results']['rows']:
             for j in i['logs']:
-                dust_transactions.append(j)
+                if dt.strptime(j['operateTime'], '%Y-%m-%d %H:%M:%S') > start_timestamp:
+                    dust_transactions.append(j)
 
         return dust_transactions
 
+    def get_dividend_transactions(self, start=None):
+        path = '/sapi/v1/asset/assetDividend'
+
+        if not start:
+            start_timestamp = int(dt.timestamp(dt.strptime('2017-11-01', '%Y-%m-%d')))
+        else:
+            start_timestamp = int(dt.timestamp(dt.strptime(start, '%Y-%m-%d %H:%M:%S')))
+
+        c = BinanceAuth(self.api_key, self.api_secret)
+        headers = c.get_request_headers()
+
+        params = {
+            'limit': 500,
+            'recvWindow': 20000,
+            'timestamp': int(time.time() * 1000)
+        }
+
+        params['signature'] = c.get_request_signature(params)
+
+        r = requests.get(self.base_url + path, headers=headers, params=params).json()
+
+        dividend_transactions = []
+        for i in r['rows']:
+            if i['divTime'] > (1000 * start_timestamp):
+                dividend_transactions.append(i)
+
+        if r['total'] == params['limit']:
+            # TODO: Add code to handle pagination when required
+            print('Need to handle dividend pagination!')
+
+        return dividend_transactions
+
     @staticmethod
-    def create_deposit_datarame(deposit):
+    def create_deposit_dataframe(deposit):
         tx = Transaction()
 
         tx.transaction['asset'] = deposit['asset']
@@ -423,7 +540,7 @@ class Binance:
         return pd.DataFrame(tx.transaction, index=[0])
 
     @staticmethod
-    def create_withdrawal_datarame(withdrawal):
+    def create_withdrawal_dataframe(withdrawal):
         tx = Transaction()
 
         tx.transaction['asset'] = withdrawal['asset']
@@ -510,9 +627,38 @@ class Binance:
 
         return pd.concat([df_tx_buy, df_tx_sell])
 
+    @staticmethod
+    def create_dividend_transaction_dataframe(dividend_transaction):
+        tx = Transaction()
+
+        tx.transaction['asset'] = dividend_transaction['asset']
+        tx.transaction['action'] = 'airdrop'
+        tx.transaction['disposal'] = False
+        tx.transaction['datetime'] = dt.fromtimestamp(dividend_transaction['divTime'] / 1000)
+        tx.transaction['initial_asset_quantity'] = dividend_transaction['amount']
+        tx.transaction['initial_asset_currency'] = dividend_transaction['asset']
+        tx.transaction['initial_asset_location'] = 'Binance'
+        tx.transaction['initial_asset_address'] = None
+        tx.transaction['price'] = None
+        tx.transaction['final_asset_quantity'] = dividend_transaction['amount']
+        tx.transaction['final_asset_currency'] = dividend_transaction['asset']
+        tx.transaction['final_asset_gbp'] = None
+        tx.transaction['final_asset_location'] = None
+        tx.transaction['final_asset_address'] = None
+        tx.transaction['fee_type'] = None
+        tx.transaction['fee_quantity'] = None
+        tx.transaction['fee_currency'] = None
+        tx.transaction['fee_gbp'] = None
+        tx.transaction['source_transaction_id'] = dividend_transaction['id']
+        tx.transaction['source_trade_id'] = None
+
+        return pd.DataFrame(tx.transaction, index=[0])
+
 
 if __name__ == '__main__':
     x = Binance()
     x.get_binance_transactions()
-    # x.get_symbol_trades('ONEBIDR')
+    # start = None
+    # start = '2020-08-20 18:45:38'
+    # x.get_symbol_trades(symbol='ETHBTC', start=start)
 
