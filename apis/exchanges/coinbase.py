@@ -1,4 +1,5 @@
 import os
+import json
 import re
 import requests
 import pandas as pd
@@ -128,9 +129,6 @@ class Coinbase:
 
         df_final = df_all[~df_all.source_transaction_id.isin(withdrawal_source_transaction_ids_to_remove)]
 
-        # df_final = pd.read_csv(r"C:\Users\alasd\Documents\Projects Misc\coinbase.csv")
-
-        # TODO: Change disposal to False for crypto to crypto buys
         df_crypto_crypto_buys = df_final.loc[(df_final['action'] == 'exchange_crypto_for_crypto') &
                                              pd.isna(df_final['initial_asset_currency'])].drop(columns=['initial_asset_quantity', 'initial_asset_currency'])
 
@@ -151,9 +149,20 @@ class Coinbase:
         # Sort by datetime again
         df_final.sort_values(by='datetime', inplace=True)
 
+        # Check whether cached_rates_gbp.json exists
+        if not os.path.isfile('data/cached_gbp_rates.json'):
+            with open('data/cached_gbp_rates.json', 'w') as f:
+                json.dump({}, f)
+
+        # Read cached crypto/gbp rates
+        with open('data/cached_gbp_rates.json') as j:
+            cached_rates = json.load(j)
+
         # Loop through and get GBP values where missing
         final_asset_gbp = []
         fee_gbp = []
+        count_api = 0
+        count_cache = 0
         for row in df_final.itertuples():
             # Calculate GBP value for all disposals
             if row.action in ['exchange_fiat_for_crypto', 'exchange_crypto_for_fiat', 'exchange_crypto_for_crypto']:
@@ -166,9 +175,31 @@ class Coinbase:
                         asset = row.final_asset_currency
                         datetime = row.datetime.strftime('%Y-%m-%d %H:%M:00')
                         quantity = row.final_asset_quantity
-                        c = CoinbaseConvertToGBP(asset, datetime, quantity)
-                        gbp_value = c.convert_to_gbp()
-                        final_asset_gbp.append(gbp_value)
+
+                        # Check whether we have already cached the GBP rate for the asset and datetime in question
+                        if asset in cached_rates.keys():
+                            if not cached_rates[asset].get(datetime):
+                                c = CoinbaseConvertToGBP(asset, datetime, quantity)
+                                gbp_value = c.convert_to_gbp()
+                                final_asset_gbp.append(gbp_value)
+                                if float(quantity):
+                                    rate_gbp = gbp_value / float(quantity)
+                                    cached_rates[asset][datetime] = rate_gbp
+                                count_api += 1
+                            else:
+                                rate_gbp = cached_rates[asset].get(datetime)
+                                quantity_gbp = rate_gbp * float(quantity)
+                                final_asset_gbp.append(quantity_gbp)
+                                count_cache += 1
+                        else:
+                            c = CoinbaseConvertToGBP(asset, datetime, quantity)
+                            gbp_value = c.convert_to_gbp()
+                            final_asset_gbp.append(gbp_value)
+                            if float(quantity):
+                                rate_gbp = gbp_value / float(quantity)
+                                cached_rates[asset] = {}
+                                cached_rates[asset][datetime] = rate_gbp
+                            count_api += 1
                 else:
                     final_asset_gbp.append(row.final_asset_gbp)
             else:
@@ -182,11 +213,40 @@ class Coinbase:
                     asset = row.fee_currency
                     datetime = row.datetime.strftime('%Y-%m-%d %H:%M:00')
                     quantity = row.fee_quantity
-                    c = CoinbaseConvertToGBP(asset, datetime, quantity)
-                    gbp_value = c.convert_to_gbp()
-                    fee_gbp.append(gbp_value)
+
+                    # Check whether we have already cached the GBP rate for the asset and datetime in question
+                    if asset in cached_rates.keys():
+                        if not cached_rates[asset].get(datetime):
+                            c = CoinbaseConvertToGBP(asset, datetime, quantity)
+                            gbp_value = c.convert_to_gbp()
+                            fee_gbp.append(gbp_value)
+                            if float(quantity):
+                                rate_gbp = gbp_value / float(quantity)
+                                cached_rates[asset][datetime] = rate_gbp
+                            count_api += 1
+                        else:
+                            rate_gbp = cached_rates[asset].get(datetime)
+                            quantity_gbp = rate_gbp * float(quantity)
+                            fee_gbp.append(quantity_gbp)
+                            count_cache += 1
+                    else:
+                        c = CoinbaseConvertToGBP(asset, datetime, quantity)
+                        quantity_gbp = c.convert_to_gbp()
+                        fee_gbp.append(quantity_gbp)
+                        if float(quantity):
+                            rate_gbp = quantity_gbp / float(quantity)
+                            cached_rates[asset] = {}
+                            cached_rates[asset][datetime] = rate_gbp
+                        count_api += 1
             else:
                 fee_gbp.append(None)
+
+        print(f'Count API:\t {count_api}')
+        print(f'Count cache:\t {count_cache}')
+
+        # Save cached_rates back to json file for quicker conversions on next run
+        with open('data/cached_gbp_rates.json', 'w', encoding='utf-8') as f:
+            json.dump(cached_rates, f, ensure_ascii=False, indent=4)
 
         df_final['final_asset_gbp'] = final_asset_gbp
         df_final['fee_gbp'] = fee_gbp
@@ -498,6 +558,7 @@ class Coinbase:
             tx.transaction['initial_asset_currency'] = None
             tx.transaction['final_asset_quantity'] = abs(float(transaction['amount']['amount']))
             tx.transaction['final_asset_currency'] = asset
+            tx.transaction['final_asset_location'] = 'Coinbase'
             tx.transaction['final_asset_gbp'] = abs(float(transaction['native_amount']['amount']))
             tx.transaction['fee_type'] = None
             tx.transaction['fee_quantity'] = None
@@ -516,6 +577,7 @@ class Coinbase:
             tx.transaction['initial_asset_currency'] = asset
             tx.transaction['final_asset_quantity'] = None
             tx.transaction['final_asset_currency'] = None
+            tx.transaction['final_asset_location'] = None
             tx.transaction['final_asset_gbp'] = None
             tx.transaction['fee_type'] = 'transfer'
             if 'transaction_fee' in transaction.keys():
@@ -535,6 +597,7 @@ class Coinbase:
             tx.transaction['initial_asset_currency'] = None
             tx.transaction['final_asset_quantity'] = abs(float(transaction['amount']['amount']))
             tx.transaction['final_asset_currency'] = asset
+            tx.transaction['final_asset_location'] = 'Coinbase'
             tx.transaction['final_asset_gbp'] = abs(float(transaction['native_amount']['amount']))
             tx.transaction['fee_type'] = None
             tx.transaction['fee_quantity'] = None
@@ -548,7 +611,6 @@ class Coinbase:
         tx.transaction['datetime'] = dt.strptime(transaction['created_at'], '%Y-%m-%dT%H:%M:%SZ')
         tx.transaction['initial_asset_address'] = None
         tx.transaction['price'] = None
-        tx.transaction['final_asset_location'] = 'Coinbase'
         tx.transaction['source_transaction_id'] = transaction['id']
 
         return pd.DataFrame(tx.transaction, index=[0])
