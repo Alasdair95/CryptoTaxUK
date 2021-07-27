@@ -98,7 +98,7 @@ class GetAllTransactions:
 
         print('All done!')
 
-        return None
+        return True
 
     def create_exchange_transactions(self):
         # Get Binance transactions

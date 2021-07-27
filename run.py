@@ -1,19 +1,19 @@
-import sys
+from apis.get_all_transactions import GetAllTransactions
 
 
 class CryptoTaxUK:
     def __init__(self):
-        if len(sys.argv) > 1:
-            self.path = sys.argv[1]
-        else:
-            self.path = 'test'
+        self.save_path = 'todo'  # TODO: Fix this
 
     def execute(self):
-        # This function will execute 4 steps:
-        # - Take self.path and combine all raw data into one data set of transactions per asset
-        # - Perform all tax related calculations
-        # - Generate the final tax report
-        # - Save the final tax report and notify the user where it has been saved
+        # Generate complete dataset of transactions for each asset
+        x = GetAllTransactions()
+        x.get_all_transactions()
+
+        # Perform all tax related calculations
+
+        # Generate a final report
+
         pass
 
 
