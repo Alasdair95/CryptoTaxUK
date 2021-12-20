@@ -200,7 +200,7 @@ class Exodus:
 
             tx_buy.transaction['asset'] = row.INCURRENCY
             tx_buy.transaction['action'] = 'exchange_crypto_for_crypto'
-            tx_buy.transaction['disposal'] = False
+            tx_buy.transaction['disposal'] = True
             tx_buy.transaction['datetime'] = dt.strptime(row.DATE.split(' (')[0], '%a %b %d %Y %H:%M:%S GMT%z').strftime(
                 '%Y-%m-%d %H:%M:%S')
             tx_buy.transaction['initial_asset_quantity'] = round(row.INAMOUNT, 8)
@@ -226,7 +226,7 @@ class Exodus:
 
             tx_sell.transaction['asset'] = row.OUTCURRENCY
             tx_sell.transaction['action'] = 'exchange_crypto_for_crypto'
-            tx_sell.transaction['disposal'] = True
+            tx_sell.transaction['disposal'] = False
             tx_sell.transaction['datetime'] = dt.strptime(row.DATE.split(' (')[0],
                                                          '%a %b %d %Y %H:%M:%S GMT%z').strftime(
                 '%Y-%m-%d %H:%M:%S')

@@ -374,7 +374,8 @@ class Binance:
         return pd.concat([df_tx_buy, df_tx_sell])
 
     def get_deposits(self, start=None):
-        path = '/wapi/v3/depositHistory.html'
+        # path = '/wapi/v3/depositHistory.html'
+        path = '/sapi/v1/capital/deposit/hisrec'
 
         if not start:
             initial_timestamp = int(dt.timestamp(dt.strptime('2017-11-01', '%Y-%m-%d')))
@@ -657,8 +658,8 @@ class Binance:
 
 if __name__ == '__main__':
     x = Binance()
-    x.get_binance_transactions()
+    # x.get_binance_transactions()
     # start = None
     # start = '2020-08-20 18:45:38'
     # x.get_symbol_trades(symbol='ETHBTC', start=start)
-
+    x.get_deposits()
