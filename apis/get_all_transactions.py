@@ -98,7 +98,7 @@ class GetAllTransactions:
 
         print('All done!')
 
-        return None
+        return True
 
     def create_exchange_transactions(self):
         # Get Binance transactions
@@ -121,6 +121,7 @@ class GetAllTransactions:
         coinbase_pro_transactions = coinbase_pro.get_coinbase_pro_transactions()
         coinbase_pro_transactions.to_csv(f'{self.source_transactions_save_path}coinbase_pro.csv', index=False)
         print('Got Coinbase Pro transactions!\n')
+        pass
 
     def create_wallet_transactions(self):
         # Get Exodus transactions
