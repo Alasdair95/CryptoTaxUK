@@ -200,16 +200,16 @@ class Exodus:
 
             tx_buy.transaction['asset'] = row.INCURRENCY
             tx_buy.transaction['action'] = 'exchange_crypto_for_crypto'
-            tx_buy.transaction['disposal'] = True
+            tx_buy.transaction['disposal'] = False
             tx_buy.transaction['datetime'] = dt.strptime(row.DATE.split(' (')[0], '%a %b %d %Y %H:%M:%S GMT%z').strftime(
                 '%Y-%m-%d %H:%M:%S')
-            tx_buy.transaction['initial_asset_quantity'] = round(row.INAMOUNT, 8)
-            tx_buy.transaction['initial_asset_currency'] = row.INCURRENCY
+            tx_buy.transaction['initial_asset_quantity'] = round(abs(row.OUTAMOUNT), 8)
+            tx_buy.transaction['initial_asset_currency'] = row.OUTCURRENCY
             tx_buy.transaction['initial_asset_location'] = 'Exodus'
             tx_buy.transaction['initial_asset_address'] = None
-            tx_buy.transaction['price'] = round(row.INAMOUNT, 8) / round(abs(row.OUTAMOUNT), 8)
-            tx_buy.transaction['final_asset_quantity'] = round(abs(row.OUTAMOUNT), 8)
-            tx_buy.transaction['final_asset_currency'] = row.OUTCURRENCY
+            tx_buy.transaction['price'] = round(row.INAMOUNT / abs(row.OUTAMOUNT), 8)
+            tx_buy.transaction['final_asset_quantity'] = round(abs(row.INAMOUNT), 8)
+            tx_buy.transaction['final_asset_currency'] = row.INCURRENCY
             tx_buy.transaction['final_asset_gbp'] = None
             tx_buy.transaction['final_asset_location'] = 'Exodus'
             tx_buy.transaction['final_asset_address'] = None
@@ -226,17 +226,17 @@ class Exodus:
 
             tx_sell.transaction['asset'] = row.OUTCURRENCY
             tx_sell.transaction['action'] = 'exchange_crypto_for_crypto'
-            tx_sell.transaction['disposal'] = False
+            tx_sell.transaction['disposal'] = True
             tx_sell.transaction['datetime'] = dt.strptime(row.DATE.split(' (')[0],
                                                          '%a %b %d %Y %H:%M:%S GMT%z').strftime(
                 '%Y-%m-%d %H:%M:%S')
-            tx_sell.transaction['initial_asset_quantity'] = round(row.INAMOUNT, 8)
-            tx_sell.transaction['initial_asset_currency'] = row.INCURRENCY
+            tx_sell.transaction['initial_asset_quantity'] = round(abs(row.OUTAMOUNT), 8)
+            tx_sell.transaction['initial_asset_currency'] = row.OUTCURRENCY
             tx_sell.transaction['initial_asset_location'] = 'Exodus'
             tx_sell.transaction['initial_asset_address'] = None
-            tx_sell.transaction['price'] = round(row.INAMOUNT, 8) / round(abs(row.OUTAMOUNT), 8)
-            tx_sell.transaction['final_asset_quantity'] = round(abs(row.OUTAMOUNT), 8)
-            tx_sell.transaction['final_asset_currency'] = row.OUTCURRENCY
+            tx_sell.transaction['price'] = round(row.INAMOUNT / abs(row.OUTAMOUNT), 8)
+            tx_sell.transaction['final_asset_quantity'] = round(abs(row.INAMOUNT), 8)
+            tx_sell.transaction['final_asset_currency'] = row.INCURRENCY
             tx_sell.transaction['final_asset_gbp'] = None
             tx_sell.transaction['final_asset_location'] = 'Exodus'
             tx_sell.transaction['final_asset_address'] = None
