@@ -146,7 +146,10 @@ class CoinbaseConvertToGBP:
 
         try:
             if download_urls.get(base)[0]:
-                return 1 / df.loc[df['index'] == self.dt]['close'].tolist()[0]
+                try:
+                    return 1 / df.loc[df['index'] == self.dt]['close'].tolist()[0]
+                except:
+                    print('dz')
             else:
                 return df.loc[df['index'] == self.dt]['close'].tolist()[0]
         except IndexError:  # Most recent exchange rates have not yet been added to the data source
