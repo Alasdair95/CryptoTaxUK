@@ -49,16 +49,16 @@ class Binance:
         else:
             df_withdrawals = pd.DataFrame(Transaction().transaction, index=[0]).dropna()
 
-        # Get dust transactions
-        dust_transactions = self.get_dust_transactions(start=most_recent_transaction)
-
-        dust_transactions_dataframes = []
-        if len(dust_transactions) > 0:
-            for d in dust_transactions:
-                dust_transactions_dataframes.append(Binance.create_dust_transaction_dataframe(d))
-            df_dust_transactions = pd.concat(dust_transactions_dataframes)
-        else:
-            df_dust_transactions = pd.DataFrame(Transaction().transaction, index=[0]).dropna()
+        # # Get dust transactions
+        # dust_transactions = self.get_dust_transactions(start=most_recent_transaction)
+        #
+        # dust_transactions_dataframes = []
+        # if len(dust_transactions) > 0:
+        #     for d in dust_transactions:
+        #         dust_transactions_dataframes.append(Binance.create_dust_transaction_dataframe(d))
+        #     df_dust_transactions = pd.concat(dust_transactions_dataframes)
+        # else:
+        #     df_dust_transactions = pd.DataFrame(Transaction().transaction, index=[0]).dropna()
 
         # Get dividend transactions
         dividend_transactions = self.get_dividend_transactions(start=most_recent_transaction)
@@ -93,7 +93,8 @@ class Binance:
             df_trades = pd.concat(df_trades_list)
             # df_trades = pd.read_csv(r"C:\Users\alasd\Documents\Projects Misc\binance.csv")
 
-            df_final = pd.concat([df_deposits, df_withdrawals, df_trades, df_dust_transactions, df_dividend_transactions])
+            # df_final = pd.concat([df_deposits, df_withdrawals, df_trades, df_dust_transactions, df_dividend_transactions])
+            df_final = pd.concat([df_deposits, df_withdrawals, df_trades, df_dividend_transactions])
             df_final['datetime'] = pd.to_datetime(df_final['datetime'])
 
             df_final.sort_values(by='datetime', inplace=True)
@@ -402,8 +403,8 @@ class Binance:
 
             r = requests.get(self.base_url + path, headers=headers, params=params).json()
 
-            if len(r['depositList']) > 0:
-                for deposit in r['depositList']:
+            if len(r) > 0:
+                for deposit in r:
                     if deposit['insertTime'] > (1000*initial_timestamp):
                         deposits.append(deposit)
 
@@ -413,14 +414,17 @@ class Binance:
         return deposits
 
     def get_withdrawals(self, start=None):
-        path = '/wapi/v3/withdrawHistory.html'
+        # path = '/wapi/v3/withdrawHistory.html'
+        path = '/sapi/v1/capital/withdraw/history'
 
         if not start:
             initial_timestamp = int(dt.timestamp(dt.strptime('2017-11-01', '%Y-%m-%d')))
+            # initial_dt = dt.strptime('2017-11-01', '%Y-%m-%d')
             start_timestamp = int(dt.timestamp(dt.strptime('2017-11-01', '%Y-%m-%d')))
             end_timestamp = int(dt.timestamp(dt.strptime('2017-11-01', '%Y-%m-%d') + timedelta(days=90)))
         else:
             initial_timestamp = int(dt.timestamp(dt.strptime(start, '%Y-%m-%d %H:%M:%S')))
+            # initial_dt = dt.strptime(start, '%Y-%m-%d %H:%M:%S')
             start_timestamp = int(dt.timestamp(dt.strptime(start, '%Y-%m-%d %H:%M:%S')))
             end_timestamp = int(dt.timestamp(dt.strptime(start, '%Y-%m-%d %H:%M:%S') + timedelta(days=90)))
 
@@ -440,9 +444,9 @@ class Binance:
 
             r = requests.get(self.base_url + path, headers=headers, params=params).json()
 
-            if len(r['withdrawList']) > 0:
-                for withdrawal in r['withdrawList']:
-                    if withdrawal['applyTime'] > (1000*initial_timestamp):
+            if len(r) > 0:
+                for withdrawal in r:
+                    if int(dt.timestamp(dt.strptime(withdrawal['applyTime'], '%Y-%m-%d %H:%M:%S'))) > initial_timestamp:
                         withdrawals.append(withdrawal)
 
             start_timestamp = end_timestamp
@@ -451,7 +455,8 @@ class Binance:
         return withdrawals
 
     def get_dust_transactions(self, start=None):
-        path = '/wapi/v3/userAssetDribbletLog.html'
+        # path = '/wapi/v3/userAssetDribbletLog.html'
+        path = '/sapi/v1/asset/dribblet'
 
         if not start:
             start_timestamp = dt.strptime('2017-11-01', '%Y-%m-%d')
@@ -514,20 +519,20 @@ class Binance:
     def create_deposit_dataframe(deposit):
         tx = Transaction()
 
-        tx.transaction['asset'] = deposit['asset']
-        if deposit['asset'] in ['GBP', 'EUR', 'USD']:
+        tx.transaction['asset'] = deposit['coin']
+        if deposit['coin'] in ['GBP', 'EUR', 'USD']:
             tx.transaction['action'] = 'deposit_fiat'
         else:
             tx.transaction['action'] = 'deposit_crypto'
         tx.transaction['disposal'] = False
         tx.transaction['datetime'] = dt.fromtimestamp(deposit['insertTime']/1000)
         tx.transaction['initial_asset_quantity'] = deposit['amount']
-        tx.transaction['initial_asset_currency'] = deposit['asset']
+        tx.transaction['initial_asset_currency'] = deposit['coin']
         tx.transaction['initial_asset_location'] = None
         tx.transaction['initial_asset_address'] = None
         tx.transaction['price'] = None
         tx.transaction['final_asset_quantity'] = deposit['amount']
-        tx.transaction['final_asset_currency'] = deposit['asset']
+        tx.transaction['final_asset_currency'] = deposit['coin']
         tx.transaction['final_asset_gbp'] = None
         tx.transaction['final_asset_location'] = 'Binance'
         tx.transaction['final_asset_address'] = deposit['address']
@@ -544,26 +549,26 @@ class Binance:
     def create_withdrawal_dataframe(withdrawal):
         tx = Transaction()
 
-        tx.transaction['asset'] = withdrawal['asset']
-        if withdrawal['asset'] in ['GBP', 'EUR', 'USD']:
+        tx.transaction['asset'] = withdrawal['coin']
+        if withdrawal['coin'] in ['GBP', 'EUR', 'USD']:
             tx.transaction['action'] = 'withdraw_fiat'
         else:
             tx.transaction['action'] = 'withdraw_crypto'
         tx.transaction['disposal'] = False
-        tx.transaction['datetime'] = dt.fromtimestamp(withdrawal['applyTime'] / 1000)
+        tx.transaction['datetime'] = withdrawal['applyTime']
         tx.transaction['initial_asset_quantity'] = withdrawal['amount']
-        tx.transaction['initial_asset_currency'] = withdrawal['asset']
+        tx.transaction['initial_asset_currency'] = withdrawal['coin']
         tx.transaction['initial_asset_location'] = 'Binance'
         tx.transaction['initial_asset_address'] = None
         tx.transaction['price'] = None
         tx.transaction['final_asset_quantity'] = withdrawal['amount']
-        tx.transaction['final_asset_currency'] = withdrawal['asset']
+        tx.transaction['final_asset_currency'] = withdrawal['coin']
         tx.transaction['final_asset_gbp'] = None
         tx.transaction['final_asset_location'] = None
         tx.transaction['final_asset_address'] = withdrawal['address']
         tx.transaction['fee_type'] = 'withdrawal'
         tx.transaction['fee_quantity'] = withdrawal['transactionFee']
-        tx.transaction['fee_currency'] = withdrawal['asset']
+        tx.transaction['fee_currency'] = withdrawal['coin']
         tx.transaction['fee_gbp'] = None
         tx.transaction['source_transaction_id'] = withdrawal['id']
         tx.transaction['source_trade_id'] = None
@@ -658,8 +663,8 @@ class Binance:
 
 if __name__ == '__main__':
     x = Binance()
-    # x.get_binance_transactions()
+    x.get_binance_transactions()
     # start = None
     # start = '2020-08-20 18:45:38'
     # x.get_symbol_trades(symbol='ETHBTC', start=start)
-    x.get_deposits()
+    # x.get_deposits()
