@@ -72,15 +72,16 @@ class Binance:
             df_dividend_transactions = pd.DataFrame(Transaction().transaction, index=[0]).dropna()
 
         # Get trades
-        # symbols = self.get_symbols()
+        symbols = self.get_symbols()
+
         with open('data/binance_pairs.json') as j:
-            symbols = json.load(j)
+            binance_pairs = json.load(j)
 
         count = 0
         df_trades_list = []
-        for symbol, v in symbols.items():
-            if symbols.get(symbol):
-                trades = self.get_symbol_trades(symbol, start=most_recent_transaction)
+        for symbol in symbols:
+            if binance_pairs.get(symbol['symbol']):
+                trades = self.get_symbol_trades(symbol['symbol'], start=most_recent_transaction)
                 time.sleep(1)
 
                 if len(trades) > 0:
@@ -90,7 +91,7 @@ class Binance:
                         df_trades_list.append(Binance.create_trades_dataframes(symbol, trade))
                 # else:
                 #     df_trades = pd.DataFrame(Transaction().transaction, index=[0]).dropna()
-                count += 1
+            count += 1
 
         if len(df_trades_list) > 0:
             df_trades = pd.concat(df_trades_list)
@@ -704,4 +705,5 @@ if __name__ == '__main__':
     # start = '2020-08-20 18:45:38'
     # x.get_symbol_trades(symbol='ETHBTC', start=start)
     # x.get_deposits()
+    # x.get_symbol_trades('LTCBNB')
     # x.update_pair_list()
