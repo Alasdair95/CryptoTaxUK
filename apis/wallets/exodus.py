@@ -132,6 +132,10 @@ class Exodus:
         print(f'Count API:\t {count_api}')
         print(f'Count cache:\t {count_cache}')
 
+        # Save cached_rates back to json file for quicker conversions on next run
+        with open('data/cached_gbp_rates.json', 'w', encoding='utf-8') as f:
+            json.dump(cached_rates, f, ensure_ascii=False, indent=4)
+
         df_transactions['final_asset_gbp'] = final_asset_gbp
         df_transactions['fee_gbp'] = fee_gbp
 
