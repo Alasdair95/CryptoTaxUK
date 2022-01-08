@@ -17,7 +17,7 @@ class GetAllTransactions:
     def get_all_transactions(self):
         # Delete forex data to ensure up to date data is downloaded
         for file in os.listdir(self.forex_downloads):
-            os.remove(file)
+            os.remove('data/forex/'+file)
 
         if not os.path.exists(self.source_transactions_save_path):
             os.makedirs(self.source_transactions_save_path)
