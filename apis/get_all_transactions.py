@@ -12,8 +12,13 @@ class GetAllTransactions:
     def __init__(self):
         self.source_transactions_save_path = 'data/source_transactions/'
         self.asset_transactions_save_path = 'data/asset_transactions/'
+        self.forex_downloads = 'data/forex/'
 
     def get_all_transactions(self):
+        # Delete forex data to ensure up to date data is downloaded
+        for file in os.listdir(self.forex_downloads):
+            os.remove('data/forex/'+file)
+
         if not os.path.exists(self.source_transactions_save_path):
             os.makedirs(self.source_transactions_save_path)
 

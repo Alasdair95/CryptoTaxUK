@@ -74,19 +74,23 @@ class Binance:
         # Get trades
         symbols = self.get_symbols()
 
+        with open('data/binance_pairs.json') as j:
+            binance_pairs = json.load(j)
+
         count = 0
         df_trades_list = []
         for symbol in symbols:
-            trades = self.get_symbol_trades(symbol['symbol'], start=most_recent_transaction)
-            time.sleep(1)
+            if binance_pairs.get(symbol['symbol']):
+                trades = self.get_symbol_trades(symbol['symbol'], start=most_recent_transaction)
+                time.sleep(1)
 
-            if len(trades) > 0:
-                print(f'{count}/{len(symbols)} checked.')
-                print(f"{symbol['symbol']}: {len(trades)} trades")
-                for trade in trades:
-                    df_trades_list.append(Binance.create_trades_dataframes(symbol, trade))
-            # else:
-            #     df_trades = pd.DataFrame(Transaction().transaction, index=[0]).dropna()
+                if len(trades) > 0:
+                    print(f'{count}/{len(symbols)} checked.')
+                    print(f"{symbol['symbol']}: {len(trades)} trades")
+                    for trade in trades:
+                        df_trades_list.append(Binance.create_trades_dataframes(symbol, trade))
+                # else:
+                #     df_trades = pd.DataFrame(Transaction().transaction, index=[0]).dropna()
             count += 1
 
         if len(df_trades_list) > 0:
@@ -660,6 +664,39 @@ class Binance:
 
         return pd.DataFrame(tx.transaction, index=[0])
 
+    def update_pair_list(self):
+        # Get symbols
+        symbols = self.get_symbols()
+
+        # Check whether binance_pairs.json exists
+        if not os.path.isfile('data/binance_pairs.json'):
+            with open('data/binance_pairs.json', 'w') as f:
+                json.dump({}, f)
+
+        # Read cached crypto/gbp rates
+        with open('data/binance_pairs.json') as j:
+            binance_pairs = json.load(j)
+
+        count = 0
+        for symbol in symbols:
+            trades = self.get_symbol_trades(symbol['symbol'], start=None)
+            time.sleep(1)
+
+            if len(trades) > 0:
+                binance_pairs[symbol['symbol']] = 1
+                print(f'{count}/{len(symbols)} checked.')
+                print(f"{symbol['symbol']}: {len(trades)} trades")
+            else:
+                binance_pairs[symbol['symbol']] = 0
+
+            count += 1
+
+        # Save binance_pairs as json file
+        with open('data/binance_pairs.json', 'w', encoding='utf-8') as f:
+            json.dump(binance_pairs, f, ensure_ascii=False, indent=4)
+
+        return None
+
 
 if __name__ == '__main__':
     x = Binance()
@@ -668,3 +705,5 @@ if __name__ == '__main__':
     # start = '2020-08-20 18:45:38'
     # x.get_symbol_trades(symbol='ETHBTC', start=start)
     # x.get_deposits()
+    # x.get_symbol_trades('LTCBNB')
+    # x.update_pair_list()
