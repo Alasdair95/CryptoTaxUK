@@ -1,5 +1,6 @@
 import os
 import pandas as pd
+import time
 
 from apis.exchanges.binance import Binance
 from apis.exchanges.coinbase import Coinbase
@@ -108,33 +109,41 @@ class GetAllTransactions:
     def create_exchange_transactions(self):
         # Get Binance transactions
         print('Getting Binance transactions...')
+        binance_start_time = time.time()
         binance = Binance()
         binance_transactions = binance.get_binance_transactions()
         binance_transactions.to_csv(f'{self.source_transactions_save_path}binance.csv', index=False)
-        print('Got Binance transactions!\n')
+        binance_end_time = time.time()
+        print(f'Got Binance transactions in {binance_end_time-binance_start_time} seconds.\n')
 
         # Get Coinbase transactions
         print('Getting Coinbase transactions...')
+        coinbase_start_time = time.time()
         coinbase = Coinbase()
         coinbase_transactions = coinbase.get_coinbase_transactions()
         coinbase_transactions.to_csv(f'{self.source_transactions_save_path}coinbase.csv', index=False)
-        print('Got Coinbase transactions!\n')
+        coinbase_end_time = time.time()
+        print(f'Got Coinbase transactions in {coinbase_end_time-coinbase_start_time} seconds.\n')
 
         # Get Coinbase Pro transactions
         print('Getting Coinbase Pro transactions...')
+        coinbase_pro_start_time = time.time()
         coinbase_pro = CoinbasePro()
         coinbase_pro_transactions = coinbase_pro.get_coinbase_pro_transactions()
         coinbase_pro_transactions.to_csv(f'{self.source_transactions_save_path}coinbase_pro.csv', index=False)
-        print('Got Coinbase Pro transactions!\n')
+        coinbase_pro_end_time = time.time()
+        print(f'Got Coinbase Pro transactions in {coinbase_pro_end_time-coinbase_pro_start_time} seconds.\n')
         pass
 
     def create_wallet_transactions(self):
         # Get Exodus transactions
         print('Getting Exodus transactions...')
+        exodus_start_time = time.time()
         exodus = Exodus()
         exodus_transactions = exodus.get_exodus_transactions()
         exodus_transactions.to_csv(f'{self.source_transactions_save_path}exodus.csv', index=False)
-        print('Got Exodus transactions!\n')
+        exodus_end_time = time.time()
+        print(f'Got Exodus transactions in {exodus_end_time-exodus_start_time} seconds.\n')
 
 
 if __name__ == '__main__':
